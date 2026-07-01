@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.androidassignment4travelplannerapp.data.remote.ForecastResponse
 import com.example.androidassignment4travelplannerapp.data.remote.WeatherResponse
 import com.example.androidassignment4travelplannerapp.data.remote.GooglePlaceDetailModel
+import com.example.androidassignment4travelplannerapp.data.repository.TravelRepositoryImpl
 import com.example.androidassignment4travelplannerapp.domain.model.*
 import com.example.androidassignment4travelplannerapp.domain.usecase.*
 import com.google.android.libraries.places.api.model.Place
@@ -115,13 +116,11 @@ class TravelViewModel @Inject constructor(
         viewModelScope.launch {
             clearData()
             
-            // Logic: Determine Anchor (Hotel or City center)
             val anchorLat = trip?.pinnedHotel?.latitude ?: lat
             val anchorLon = trip?.pinnedHotel?.longitude ?: lon
             setMapFocus(anchorLat, anchorLon)
 
             try {
-                // 1. Weather
                 val weatherInfo = getWeatherUseCase(name)
                 _currentWeather.value = WeatherResponse(
                     main = com.example.androidassignment4travelplannerapp.data.remote.MainWeather(weatherInfo.currentTemp.toDouble(), 0.0, 0),
@@ -130,12 +129,10 @@ class TravelViewModel @Inject constructor(
                     coord = com.example.androidassignment4travelplannerapp.data.remote.Coord(weatherInfo.latitude, weatherInfo.longitude)
                 )
                 
-                // 2. Initial Chunk of Attractions (1-20)
                 val attractionResult = getNearbyAttractionsUseCase(anchorLat, anchorLon)
                 _searchResults.value = attractionResult.first
                 currentNextPageToken = attractionResult.second
 
-                // 3. Initial Hotels
                 _nearbyHotels.value = getNearbyHotelsUseCase(anchorLat, anchorLon)
 
                 val forecastJson = fetchForecastJsonUseCase(name)
@@ -157,7 +154,7 @@ class TravelViewModel @Inject constructor(
                 _searchResults.value = _searchResults.value + result.first
                 currentNextPageToken = result.second
             } catch (e: Exception) {
-                // Fail silently or show toast
+                // Fail silently
             }
         }
     }
@@ -165,7 +162,6 @@ class TravelViewModel @Inject constructor(
     fun pinHotel(tripId: Int, hotel: Hotel) {
         viewModelScope.launch {
             pinHotelUseCase(tripId, hotel)
-            // Trigger attraction refresh based on new hotel location
             startDiscoveryForCity(hotel.name, hotel.latitude, hotel.longitude)
         }
     }
@@ -179,10 +175,14 @@ class TravelViewModel @Inject constructor(
     fun selectSuggestion(place: Place) {
         _searchQuery.value = place.name ?: ""
         viewModelScope.launch {
-            clearData()
             try {
-                val latLng = place.latLng ?: return@launch
-                startDiscoveryForCity(place.name ?: "", latLng.latitude, latLng.longitude)
+                // Now we fetch full details only when selected (Cost-Saving)
+                val detail = getPlaceDetailsUseCase(place.id!!)
+                startDiscoveryForCity(
+                    name = place.name ?: "", 
+                    lat = detail.geometry.location.lat, 
+                    lon = detail.geometry.location.lng
+                )
             } catch (e: Exception) {
                 _errorMessage.value = e.message
             }

@@ -56,9 +56,13 @@ class TravelRepositoryImpl @Inject constructor(
                 .build()
             
             val response = placesClient.findAutocompletePredictions(request).await()
+            // Optimized: Return only light predictions first (Zero cost until selected)
             response.autocompletePredictions.map { prediction ->
-                val placeRequest = FetchPlaceRequest.builder(prediction.placeId, listOf(Place.Field.NAME, Place.Field.LAT_LNG, Place.Field.ID)).build()
-                placesClient.fetchPlace(placeRequest).await().place
+                Place.builder()
+                    .setId(prediction.placeId)
+                    .setName(prediction.getPrimaryText(null).toString())
+                    .setAddress(prediction.getSecondaryText(null).toString())
+                    .build()
             }
         } catch (_: Exception) {
             emptyList()
@@ -74,7 +78,7 @@ class TravelRepositoryImpl @Inject constructor(
             val location = if (pageToken == null) "$lat,$lon" else null
             val response = travelApiService.getNearbyPlaces(
                 location = location,
-                radius = 10000, // Increased radius to find more places
+                radius = 10000, 
                 type = "tourist_attraction",
                 pageToken = pageToken,
                 apiKey = googleKey
@@ -95,8 +99,8 @@ class TravelRepositoryImpl @Inject constructor(
                     rating = result.rating,
                     totalRatings = result.userRatingsTotal
                 )
-            }.sortedByDescending { it.rating ?: 0.0 } // Sort by rating
-
+            }.sortedByDescending { it.rating ?: 0.0 }
+            
             Pair(attractions, response.nextPageToken)
         } catch (_: Exception) {
             Pair(emptyList(), null)
@@ -145,8 +149,14 @@ class TravelRepositoryImpl @Inject constructor(
         }
     }
 
-    override suspend fun fetchPlaceDetails(placeId: String) = 
-        travelApiService.getPlaceDetails(placeId, apiKey = googleKey).result
+    override suspend fun fetchPlaceDetails(placeId: String): com.example.androidassignment4travelplannerapp.data.remote.GooglePlaceDetailModel {
+        // First try to get from Google SDK for LatLng (Cheapest way)
+        val placeRequest = FetchPlaceRequest.builder(placeId, listOf(Place.Field.LAT_LNG, Place.Field.NAME)).build()
+        val sdkPlace = placesClient.fetchPlace(placeRequest).await().place
+        
+        // Then get full details from Web API for rich summary/photos
+        return travelApiService.getPlaceDetails(placeId, apiKey = googleKey).result
+    }
 
     override fun getSavedTrips(): Flow<List<Trip>> {
         return tripDao.getAllTrips().map { entities -> entities.map { it.toDomain() } }

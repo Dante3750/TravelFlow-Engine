@@ -4,5 +4,9 @@ import com.example.androidassignment4travelplannerapp.domain.repository.ITravelR
 import javax.inject.Inject
 
 class GetNearbyAttractionsUseCase @Inject constructor(private val repository: ITravelRepository) {
-    suspend operator fun invoke(lat: Double, lon: Double) = repository.fetchNearbyAttractions(lat, lon)
+    suspend operator fun invoke(
+        lat: Double, 
+        lon: Double, 
+        pageToken: String? = null
+    ) = repository.fetchNearbyAttractions(lat, lon, pageToken)
 }

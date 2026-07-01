@@ -5,8 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.androidassignment4travelplannerapp.data.remote.ForecastResponse
 import com.example.androidassignment4travelplannerapp.data.remote.WeatherResponse
 import com.example.androidassignment4travelplannerapp.data.remote.GooglePlaceDetailModel
-import com.example.androidassignment4travelplannerapp.domain.model.Attraction
-import com.example.androidassignment4travelplannerapp.domain.model.Trip
+import com.example.androidassignment4travelplannerapp.domain.model.*
 import com.example.androidassignment4travelplannerapp.domain.usecase.*
 import com.google.android.libraries.places.api.model.Place
 import com.google.gson.Gson
@@ -25,6 +24,7 @@ class TravelViewModel @Inject constructor(
     getTripsUseCase: GetTripsUseCase,
     private val searchLocationsUseCase: SearchLocationsUseCase,
     private val getNearbyAttractionsUseCase: GetNearbyAttractionsUseCase,
+    private val getNearbyHotelsUseCase: GetNearbyHotelsUseCase,
     private val saveTripUseCase: SaveTripUseCase,
     private val deleteTripUseCase: DeleteTripUseCase,
     private val syncTripWeatherUseCase: SyncTripWeatherUseCase,
@@ -34,6 +34,8 @@ class TravelViewModel @Inject constructor(
     private val getPlaceDetailsUseCase: GetPlaceDetailsUseCase,
     private val getAttractionsForTripUseCase: GetAttractionsForTripUseCase,
     private val getPhotoUrlUseCase: GetPhotoUrlUseCase,
+    private val pinHotelUseCase: PinHotelUseCase,
+    private val removeHotelUseCase: RemoveHotelUseCase
 ) : ViewModel() {
 
     val savedTrips: StateFlow<List<Trip>> = getTripsUseCase().stateIn(
@@ -42,6 +44,11 @@ class TravelViewModel @Inject constructor(
 
     private val _searchResults = MutableStateFlow<List<Attraction>>(emptyList())
     val searchResults: StateFlow<List<Attraction>> = _searchResults
+
+    private val _nearbyHotels = MutableStateFlow<List<Hotel>>(emptyList())
+    val nearbyHotels: StateFlow<List<Hotel>> = _nearbyHotels
+
+    private var currentNextPageToken: String? = null
 
     private val _currentWeather = MutableStateFlow<WeatherResponse?>(null)
     val currentWeather: StateFlow<WeatherResponse?> = _currentWeather
@@ -78,6 +85,10 @@ class TravelViewModel @Inject constructor(
     fun onQueryChanged(newQuery: String) {
         _searchQuery.value = newQuery
         searchJob?.cancel()
+        if (newQuery.isEmpty()) {
+            clearData()
+            return
+        }
         if (newQuery.length < 3) {
             _suggestions.value = emptyList()
             return
@@ -93,15 +104,25 @@ class TravelViewModel @Inject constructor(
         }
     }
 
-    fun startDiscoveryForCity(name: String, lat: Double, lon: Double) {
+    fun startDiscoveryForCity(name: String, lat: Double, lon: Double, trip: Trip? = null) {
+        // Optimization: Avoid redundant re-fetches
+        if (_searchQuery.value == name && _searchResults.value.isNotEmpty()) {
+            setMapFocus(lat, lon)
+            return
+        }
+
         _searchQuery.value = name
         viewModelScope.launch {
             clearData()
-            setMapFocus(lat, lon)
+            
+            // Logic: Determine Anchor (Hotel or City center)
+            val anchorLat = trip?.pinnedHotel?.latitude ?: lat
+            val anchorLon = trip?.pinnedHotel?.longitude ?: lon
+            setMapFocus(anchorLat, anchorLon)
+
             try {
+                // 1. Weather
                 val weatherInfo = getWeatherUseCase(name)
-                _searchResults.value = getNearbyAttractionsUseCase(lat, lon)
-                
                 _currentWeather.value = WeatherResponse(
                     main = com.example.androidassignment4travelplannerapp.data.remote.MainWeather(weatherInfo.currentTemp.toDouble(), 0.0, 0),
                     weather = listOf(com.example.androidassignment4travelplannerapp.data.remote.WeatherDescription(weatherInfo.description, "")),
@@ -109,6 +130,14 @@ class TravelViewModel @Inject constructor(
                     coord = com.example.androidassignment4travelplannerapp.data.remote.Coord(weatherInfo.latitude, weatherInfo.longitude)
                 )
                 
+                // 2. Initial Chunk of Attractions (1-20)
+                val attractionResult = getNearbyAttractionsUseCase(anchorLat, anchorLon)
+                _searchResults.value = attractionResult.first
+                currentNextPageToken = attractionResult.second
+
+                // 3. Initial Hotels
+                _nearbyHotels.value = getNearbyHotelsUseCase(anchorLat, anchorLon)
+
                 val forecastJson = fetchForecastJsonUseCase(name)
                 _forecast.value = Gson().fromJson(forecastJson, ForecastResponse::class.java)
 
@@ -119,28 +148,41 @@ class TravelViewModel @Inject constructor(
         }
     }
 
+    fun loadMoreNearby(lat: Double, lon: Double) {
+        if (currentNextPageToken == null) return
+        
+        viewModelScope.launch {
+            try {
+                val result = getNearbyAttractionsUseCase(lat, lon, currentNextPageToken)
+                _searchResults.value = _searchResults.value + result.first
+                currentNextPageToken = result.second
+            } catch (e: Exception) {
+                // Fail silently or show toast
+            }
+        }
+    }
+
+    fun pinHotel(tripId: Int, hotel: Hotel) {
+        viewModelScope.launch {
+            pinHotelUseCase(tripId, hotel)
+            // Trigger attraction refresh based on new hotel location
+            startDiscoveryForCity(hotel.name, hotel.latitude, hotel.longitude)
+        }
+    }
+
+    fun unpinHotel(tripId: Int) {
+        viewModelScope.launch {
+            removeHotelUseCase(tripId)
+        }
+    }
+
     fun selectSuggestion(place: Place) {
         _searchQuery.value = place.name ?: ""
         viewModelScope.launch {
             clearData()
             try {
                 val latLng = place.latLng ?: return@launch
-                setMapFocus(latLng.latitude, latLng.longitude)
-                
-                val weatherInfo = getWeatherUseCase(place.name ?: "")
-                _searchResults.value = getNearbyAttractionsUseCase(latLng.latitude, latLng.longitude)
-                
-                _currentWeather.value = WeatherResponse(
-                    main = com.example.androidassignment4travelplannerapp.data.remote.MainWeather(weatherInfo.currentTemp.toDouble(), 0.0, 0),
-                    weather = listOf(com.example.androidassignment4travelplannerapp.data.remote.WeatherDescription(weatherInfo.description, "")),
-                    name = weatherInfo.cityName,
-                    coord = com.example.androidassignment4travelplannerapp.data.remote.Coord(weatherInfo.latitude, weatherInfo.longitude)
-                )
-                
-                val forecastJson = fetchForecastJsonUseCase(place.name ?: "")
-                _forecast.value = Gson().fromJson(forecastJson, ForecastResponse::class.java)
-
-                _errorMessage.value = null
+                startDiscoveryForCity(place.name ?: "", latLng.latitude, latLng.longitude)
             } catch (e: Exception) {
                 _errorMessage.value = e.message
             }
@@ -203,6 +245,8 @@ class TravelViewModel @Inject constructor(
         _errorMessage.value = null
         _suggestions.value = emptyList()
         _searchResults.value = emptyList()
+        _nearbyHotels.value = emptyList()
+        currentNextPageToken = null
         _currentWeather.value = null
         _forecast.value = null
     }

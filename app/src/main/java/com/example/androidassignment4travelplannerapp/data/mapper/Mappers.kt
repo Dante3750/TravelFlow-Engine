@@ -5,32 +5,41 @@ import com.example.androidassignment4travelplannerapp.data.local.TripEntity
 import com.example.androidassignment4travelplannerapp.data.remote.ForecastResponse
 import com.example.androidassignment4travelplannerapp.data.remote.WeatherResponse
 import com.example.androidassignment4travelplannerapp.domain.model.*
+import com.google.gson.Gson
 
-fun TripEntity.toDomain(): Trip = Trip(
-    id = id,
-    title = title,
-    destination = destination,
-    latitude = lat,
-    longitude = lon,
-    startDate = startDate,
-    endDate = endDate,
-    weatherSummary = weatherInfo,
-    forecastJson = forecastJson,
-    photoReference = photoReference
-)
+fun TripEntity.toDomain(): Trip {
+    val gson = Gson()
+    return Trip(
+        id = id,
+        title = title,
+        destination = destination,
+        latitude = lat,
+        longitude = lon,
+        startDate = startDate,
+        endDate = endDate,
+        weatherSummary = weatherInfo,
+        forecastJson = forecastJson,
+        photoReference = photoReference,
+        pinnedHotel = pinnedHotelJson?.let { gson.fromJson(it, Hotel::class.java) }
+    )
+}
 
-fun Trip.toEntity(): TripEntity = TripEntity(
-    id = id,
-    title = title,
-    destination = destination,
-    lat = latitude,
-    lon = longitude,
-    startDate = startDate,
-    endDate = endDate,
-    weatherInfo = weatherSummary,
-    forecastJson = forecastJson,
-    photoReference = photoReference
-)
+fun Trip.toEntity(): TripEntity {
+    val gson = Gson()
+    return TripEntity(
+        id = id,
+        title = title,
+        destination = destination,
+        lat = latitude,
+        lon = longitude,
+        startDate = startDate,
+        endDate = endDate,
+        weatherInfo = weatherSummary,
+        forecastJson = forecastJson,
+        photoReference = photoReference,
+        pinnedHotelJson = pinnedHotel?.let { gson.toJson(it) }
+    )
+}
 
 fun SavedPlaceEntity.toDomain(): Attraction {
     val cleanCategory = if (kinds == "tourist_attraction") "Nearby Place" 

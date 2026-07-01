@@ -15,7 +15,8 @@ data class TripEntity(
     val endDate: Long,
     val weatherInfo: String?,
     val forecastJson: String? = null,
-    val photoReference: String? = null
+    val photoReference: String? = null,
+    val pinnedHotelJson: String? = null // Serialized Hotel object for persistence
 )
 
 @Entity(

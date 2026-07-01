@@ -12,7 +12,19 @@ interface ITravelRepository {
 
     // Search & Places
     suspend fun searchLocations(query: String): List<Place>
-    suspend fun fetchNearbyAttractions(lat: Double, lon: Double): List<Attraction>
+    
+    // Updated: Supports pagination viapageToken and location bias
+    suspend fun fetchNearbyAttractions(
+        lat: Double, 
+        lon: Double, 
+        pageToken: String? = null
+    ): Pair<List<Attraction>, String?> // Returns list + next page token
+
+    suspend fun fetchNearbyHotels(
+        lat: Double, 
+        lon: Double
+    ): List<Hotel>
+
     suspend fun fetchPlaceDetails(placeId: String): com.example.androidassignment4travelplannerapp.data.remote.GooglePlaceDetailModel
     fun getPhotoUrl(photoReference: String?): String?
 
@@ -23,4 +35,8 @@ interface ITravelRepository {
     suspend fun addAttractionToTrip(tripId: Int, attraction: Attraction, day: Int)
     suspend fun getAttractionsForTrip(tripId: Int): List<Attraction>
     suspend fun updateTripWeather(tripId: Int, weatherSummary: String, forecastJson: String)
+    
+    // New: Hotel Persistence
+    suspend fun pinHotelToTrip(tripId: Int, hotel: Hotel)
+    suspend fun removeHotelFromTrip(tripId: Int)
 }

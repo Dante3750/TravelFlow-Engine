@@ -18,6 +18,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -36,8 +37,7 @@ import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
 import com.example.androidassignment4travelplannerapp.data.remote.ForecastResponse
 import com.example.androidassignment4travelplannerapp.data.remote.WeatherResponse
-import com.example.androidassignment4travelplannerapp.domain.model.Attraction
-import com.example.androidassignment4travelplannerapp.domain.model.Trip
+import com.example.androidassignment4travelplannerapp.domain.model.*
 import com.example.androidassignment4travelplannerapp.ui.viewmodel.TravelViewModel
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.model.CameraPosition
@@ -57,12 +57,12 @@ fun SearchScreen(
 ) {
     val query by viewModel.searchQuery.collectAsState()
     val searchResults by viewModel.searchResults.collectAsState()
+    val nearbyHotels by viewModel.nearbyHotels.collectAsState()
     val weather by viewModel.currentWeather.collectAsState()
     val forecast by viewModel.forecast.collectAsState()
     val suggestions by viewModel.suggestions.collectAsState()
     val mapFocus by viewModel.mapFocus.collectAsState()
     val selectedDetail by viewModel.selectedPlaceDetail.collectAsState()
-    val errorMessage by viewModel.errorMessage.collectAsState()
     val savedTrips by viewModel.savedTrips.collectAsState()
     
     val snackbarHostState = remember { SnackbarHostState() }
@@ -71,6 +71,7 @@ fun SearchScreen(
 
     var showSaveDialog by remember { mutableStateOf(false) }
     var placeToSave by remember { mutableStateOf<Attraction?>(null) }
+    var selectedTab by remember { mutableStateOf(0) } // 0 = Attractions, 1 = Hotels
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -78,55 +79,46 @@ fun SearchScreen(
         topBar = {
             CenterAlignedTopAppBar(
                 title = { Text("Explore", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background
-                )
+                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") } }
             )
         }
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-            Column(
-                modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp)
-            ) {
-                errorMessage?.let {
-                    Text(
-                        it, 
-                        color = MaterialTheme.colorScheme.error, 
-                        style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.padding(bottom = 8.dp)
-                    )
-                }
-
+            Column(modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
+                // 1. Search Bar
                 OutlinedTextField(
                     value = query,
-                    onValueChange = { 
-                        viewModel.onQueryChanged(it)
-                    },
-                    placeholder = { Text("Where are you heading?") },
+                    onValueChange = { viewModel.onQueryChanged(it) },
+                    placeholder = { Text("Search city or landmark...") },
                     modifier = Modifier.fillMaxWidth().height(56.dp),
                     singleLine = true,
                     shape = RoundedCornerShape(12.dp),
                     leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                    keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() }),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = MaterialTheme.colorScheme.primary,
-                        unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
-                        focusedContainerColor = MaterialTheme.colorScheme.surface,
-                        unfocusedContainerColor = MaterialTheme.colorScheme.surface
-                    )
+                    keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() })
                 )
 
                 Spacer(modifier = Modifier.height(16.dp))
 
+                // 2. Discover Tabs
+                if (suggestions.isEmpty() && weather != null) {
+                    TabRow(
+                        selectedTabIndex = selectedTab,
+                        containerColor = Color.Transparent,
+                        divider = {},
+                        indicator = { tabPositions -> 
+                            TabRowDefaults.SecondaryIndicator(Modifier.tabIndicatorOffset(tabPositions[selectedTab]), color = MaterialTheme.colorScheme.primary) 
+                        }
+                    ) {
+                        Tab(selected = selectedTab == 0, onClick = { selectedTab = 0 }, text = { Text("THINGS TO DO") })
+                        Tab(selected = selectedTab == 1, onClick = { selectedTab = 1 }, text = { Text("HOTELS") })
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+                }
+
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.spacedBy(24.dp),
+                    verticalArrangement = Arrangement.spacedBy(20.dp),
                     contentPadding = PaddingValues(bottom = 32.dp)
                 ) {
                     item {
@@ -137,111 +129,134 @@ fun SearchScreen(
                         }
                     }
 
-                    if (suggestions.isEmpty() && searchResults.isNotEmpty()) {
-                        item { 
-                            Text(
-                                "Nearby Attractions", 
-                                style = MaterialTheme.typography.titleLarge, 
-                                fontWeight = FontWeight.ExtraBold
-                            ) 
-                        }
-                        items(searchResults, key = { it.id }) { place ->
-                            HighEndPlaceItem(
-                                place = place, 
-                                viewModel = viewModel,
-                                onAddClick = { placeToSave = it },
-                                onClick = {
-                                    viewModel.setMapFocus(place.latitude, place.longitude)
-                                    viewModel.fetchPlaceDetail(place.id)
-                                }
-                            )
-                        }
-                    }
-                }
-            }
-
-            if (suggestions.isNotEmpty()) {
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp)
-                        .offset(y = 56.dp + 4.dp) 
-                        .wrapContentHeight()
-                        .shadow(12.dp, RoundedCornerShape(12.dp)),
-                    shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.surface
-                ) {
-                    Column {
-                        suggestions.forEachIndexed { index, suggestion ->
-                            ListItem(
-                                headlineContent = { Text(suggestion.name ?: "", fontWeight = FontWeight.Bold) },
-                                supportingContent = { 
-                                    Text(suggestion.address ?: "Nearby location")
-                                },
-                                leadingContent = { 
-                                    Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primaryContainer, modifier = Modifier.size(32.dp)) {
-                                        Box(contentAlignment = Alignment.Center) { Icon(Icons.Default.LocationOn, contentDescription = null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary) }
+                    if (suggestions.isEmpty()) {
+                        if (selectedTab == 0 && searchResults.isNotEmpty()) {
+                            items(searchResults, key = { it.id }) { place ->
+                                HighEndPlaceItem(
+                                    place = place, 
+                                    viewModel = viewModel,
+                                    onAddClick = { placeToSave = it },
+                                    onClick = {
+                                        viewModel.setMapFocus(place.latitude, place.longitude)
+                                        viewModel.fetchPlaceDetail(place.id)
                                     }
-                                },
-                                modifier = Modifier.clickable {
-                                    viewModel.selectSuggestion(suggestion)
-                                    focusManager.clearFocus()
+                                )
+                            }
+                            // Chunk Loading Button
+                            item {
+                                OutlinedButton(
+                                    onClick = { weather?.let { viewModel.loadMoreNearby(it.coord.lat, it.coord.lon) } },
+                                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Text("EXPLORE MORE")
                                 }
-                            )
-                            if (index < suggestions.size - 1) {
-                                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp)
+                            }
+                        } else if (selectedTab == 1 && nearbyHotels.isNotEmpty()) {
+                            items(nearbyHotels, key = { it.id }) { hotel ->
+                                HotelCardItem(
+                                    hotel = hotel,
+                                    viewModel = viewModel,
+                                    onPinClick = { 
+                                        // Find first city trip to pin to
+                                        val trip = savedTrips.find { it.destination.equals(weather?.name, true) }
+                                        if (trip != null) {
+                                            viewModel.pinHotel(trip.id, hotel)
+                                            scope.launch { snackbarHostState.showSnackbar("Pinned to ${trip.title}!") }
+                                        } else {
+                                            scope.launch { snackbarHostState.showSnackbar("Create a trip for this city first!") }
+                                        }
+                                    }
+                                )
                             }
                         }
                     }
                 }
             }
+
+            // Suggestions Overlay
+            if (suggestions.isNotEmpty()) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).offset(y = 56.dp + 4.dp).wrapContentHeight().shadow(12.dp, RoundedCornerShape(12.dp)),
+                    shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surface
+                ) {
+                    Column {
+                        suggestions.forEachIndexed { index, suggestion ->
+                            ListItem(
+                                headlineContent = { Text(suggestion.name ?: "", fontWeight = FontWeight.Bold) },
+                                supportingContent = { Text(suggestion.address ?: "Nearby location") },
+                                modifier = Modifier.clickable { viewModel.selectSuggestion(suggestion); focusManager.clearFocus() }
+                            )
+                            if (index < suggestions.size - 1) HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp)
+                        }
+                    }
+                }
+            }
         }
     }
 
+    // Dialogs
     if (showSaveDialog && weather != null) {
-        FullPageDateDialog(
-            cityName = weather!!.name,
-            onDismiss = { showSaveDialog = false },
-            onSave = { title, start, end ->
-                viewModel.saveTrip(title, weather!!, forecast, start, end)
-                showSaveDialog = false
-                scope.launch { snackbarHostState.showSnackbar("Trip planned successfully!") }
+        FullPageDateDialog(cityName = weather!!.name, onDismiss = { showSaveDialog = false }, onSave = { title, start, end ->
+            viewModel.saveTrip(title, weather!!, forecast, start, end)
+            showSaveDialog = false
+            scope.launch { snackbarHostState.showSnackbar("Trip planned successfully!") }
+        })
+    }
+
+    if (placeToSave != null) {
+        AddToItineraryDialog(
+            place = placeToSave!!,
+            trips = savedTrips,
+            currentCity = weather?.name ?: "",
+            viewModel = viewModel,
+            onDismiss = { placeToSave = null },
+            onCreateTrip = { placeToSave = null; showSaveDialog = true },
+            onAdd = { trip, day ->
+                viewModel.addPlaceToTrip(trip.id, placeToSave!!, day)
+                scope.launch { snackbarHostState.showSnackbar("Added to ${trip.title} - Day $day") }
+                placeToSave = null
             }
         )
     }
 
-    if (placeToSave != null) {
-        if (savedTrips.isEmpty()) {
-            AlertDialog(
-                onDismissRequest = { placeToSave = null },
-                title = { Text("Plan a Trip First", fontWeight = FontWeight.Bold) },
-                text = { Text("To add attractions to an itinerary, you first need to create a trip.") },
-                confirmButton = { Button(onClick = { placeToSave = null; showSaveDialog = true }) { Text("Create Trip") } },
-                dismissButton = { TextButton(onClick = { placeToSave = null }) { Text("Cancel") } }
-            )
-        } else {
-            AddToItineraryDialog(
-                place = placeToSave!!,
-                trips = savedTrips,
-                currentCity = weather?.name ?: "",
-                viewModel = viewModel,
-                onDismiss = { placeToSave = null },
-                onCreateTrip = { placeToSave = null; showSaveDialog = true },
-                onAdd = { trip, day ->
-                    viewModel.addPlaceToTrip(trip.id, placeToSave!!, day)
-                    scope.launch { snackbarHostState.showSnackbar("Added to ${trip.title} - Day $day") }
-                    placeToSave = null
-                }
-            )
-        }
-    }
-
     selectedDetail?.let {
-        PremiumPlaceDetailSheet(
-            it, 
-            viewModel.getPhotoUrl(it.photos?.firstOrNull()?.photoReference),
-            onDismiss = { viewModel.clearPlaceDetail() }
-        )
+        PremiumPlaceDetailSheet(it, viewModel.getPhotoUrl(it.photos?.firstOrNull()?.photoReference), onDismiss = viewModel::clearPlaceDetail)
+    }
+}
+
+@Composable
+fun HotelCardItem(hotel: Hotel, viewModel: TravelViewModel, onPinClick: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth().clickable { viewModel.setMapFocus(hotel.latitude, hotel.longitude) },
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(2.dp)
+    ) {
+        Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Surface(shape = RoundedCornerShape(12.dp), modifier = Modifier.size(80.dp)) {
+                if (hotel.photoReference != null) {
+                    AsyncImage(model = viewModel.getPhotoUrl(hotel.photoReference), contentDescription = null, contentScale = ContentScale.Crop)
+                } else {
+                    Box(Modifier.background(MaterialTheme.colorScheme.secondaryContainer), contentAlignment = Alignment.Center) {
+                        Icon(Icons.Default.Hotel, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.width(16.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(hotel.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, maxLines = 1)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Star, contentDescription = null, tint = Color(0xFFFFB300), modifier = Modifier.size(14.dp))
+                    Text("${hotel.rating ?: "N/A"} (${hotel.userRatingsTotal ?: 0})", style = MaterialTheme.typography.labelSmall)
+                }
+                Text(hotel.address, style = MaterialTheme.typography.bodySmall, maxLines = 1, color = Color.Gray)
+                
+                Button(onClick = onPinClick, modifier = Modifier.padding(top = 4.dp).height(32.dp), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp), shape = RoundedCornerShape(8.dp)) {
+                    Text("PIN TO TRIP", style = MaterialTheme.typography.labelSmall)
+                }
+            }
+        }
     }
 }
 
@@ -264,13 +279,7 @@ fun AddToItineraryDialog(
             onDismissRequest = onDismiss,
             title = { Text("Trip Needed", fontWeight = FontWeight.Bold) },
             text = { Text("To add this attraction, you need to create a trip for '$currentCity' first.") },
-            confirmButton = { 
-                Button(onClick = { 
-                    onCreateTrip()
-                }) { 
-                    Text("Plan '$currentCity'") 
-                } 
-            },
+            confirmButton = { Button(onClick = { onCreateTrip() }) { Text("Plan '$currentCity'") } },
             dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
         )
         return
@@ -287,12 +296,6 @@ fun AddToItineraryDialog(
     val diffInMs = selectedTrip.endDate - selectedTrip.startDate
     val daysCount = (TimeUnit.MILLISECONDS.toDays(diffInMs).toInt() + 1).coerceIn(1, 30)
     var selectedDay by remember { mutableStateOf(1) }
-    
-    LaunchedEffect(selectedTrip) {
-        val newDiff = selectedTrip.endDate - selectedTrip.startDate
-        val newCount = (TimeUnit.MILLISECONDS.toDays(newDiff).toInt() + 1).coerceIn(1, 30)
-        if (selectedDay > newCount) selectedDay = 1
-    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -305,15 +308,8 @@ fun AddToItineraryDialog(
                     relevantTrips.forEach { trip ->
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { selectedTrip = trip }
-                                .padding(vertical = 4.dp)
-                                .background(
-                                    if (selectedTrip.id == trip.id) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f) 
-                                    else Color.Transparent,
-                                    RoundedCornerShape(8.dp)
-                                )
+                            modifier = Modifier.fillMaxWidth().clickable { selectedTrip = trip }.padding(vertical = 4.dp)
+                                .background(if (selectedTrip.id == trip.id) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f) else Color.Transparent, RoundedCornerShape(8.dp))
                         ) {
                             RadioButton(selected = selectedTrip.id == trip.id, onClick = { selectedTrip = trip })
                             Column {
@@ -323,24 +319,16 @@ fun AddToItineraryDialog(
                         }
                     }
                 }
-                
-                Text("Which Day? (Duration: $daysCount days)", style = MaterialTheme.typography.labelLarge)
+                Text("Which Day?", style = MaterialTheme.typography.labelLarge)
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items((1..daysCount).toList()) { day ->
-                        FilterChip(
-                            selected = selectedDay == day,
-                            onClick = { selectedDay = day },
-                            label = { Text("Day $day") }
-                        )
+                        FilterChip(selected = selectedDay == day, onClick = { selectedDay = day }, label = { Text("Day $day") })
                     }
                 }
             }
         },
         confirmButton = {
-            Button(
-                onClick = { onAdd(selectedTrip, selectedDay) },
-                enabled = !isAlreadyInTrip
-            ) { 
+            Button(onClick = { onAdd(selectedTrip, selectedDay) }, enabled = !isAlreadyInTrip) { 
                 Text(if (isAlreadyInTrip) "Already in Trip" else "Save to Day $selectedDay") 
             }
         },
@@ -374,13 +362,9 @@ fun HighEndWeatherMapCard(
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(weather.name, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
-                    Text(
-                        "${weather.main.temp.toInt()}°C • ${weather.weather.first().description.replaceFirstChar { it.uppercase() }}",
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.Medium
-                    )
+                    Text("${weather.main.temp.toInt()}°C • ${weather.weather.first().description}", color = MaterialTheme.colorScheme.primary)
                 }
-                Button(onClick = onSave, shape = RoundedCornerShape(10.dp)) { Text("Save Trip") }
+                Button(onClick = onSave) { Text("Save Trip") }
             }
 
             if (forecast != null) {
@@ -410,7 +394,7 @@ fun HighEndWeatherMapCard(
                         state = MarkerState(position = LatLng(place.latitude, place.longitude)),
                         title = place.name,
                         onClick = {
-                            viewModel.setMapFocus(it.position.latitude, it.position.longitude)
+                            viewModel.setMapFocus(place.latitude, place.longitude)
                             viewModel.fetchPlaceDetail(place.id)
                             true
                         }
@@ -484,7 +468,7 @@ fun FullPageDateDialog(cityName: String, onDismiss: () -> Unit, onSave: (String,
                         shape = RoundedCornerShape(12.dp)
                     )
                     
-                    Divider(modifier = Modifier.padding(bottom = 8.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
+                    HorizontalDivider(modifier = Modifier.padding(bottom = 8.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
                     
                     DateRangePicker(
                         state = dateRangePickerState, 
@@ -519,7 +503,12 @@ fun HighEndPlaceItem(place: Attraction, viewModel: TravelViewModel, onAddClick: 
             Spacer(modifier = Modifier.width(16.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(place.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(place.category, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Star, contentDescription = null, tint = Color(0xFFFFB300), modifier = Modifier.size(14.dp))
+                    Text("${place.rating ?: "N/A"} (${place.totalRatings ?: 0})", style = MaterialTheme.typography.labelSmall)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(place.category, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
             IconButton(onClick = { onAddClick(place) }) {
                 Icon(Icons.Default.AddCircle, contentDescription = "Add to Trip", tint = MaterialTheme.colorScheme.primary)

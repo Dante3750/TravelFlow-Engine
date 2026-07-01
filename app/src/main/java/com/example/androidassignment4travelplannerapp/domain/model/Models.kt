@@ -10,7 +10,8 @@ data class Trip(
     val endDate: Long,
     val weatherSummary: String?,
     val forecastJson: String?,
-    val photoReference: String?
+    val photoReference: String?,
+    val pinnedHotel: Hotel? = null // The "Anchor" for recommendations
 )
 
 data class Attraction(
@@ -20,8 +21,30 @@ data class Attraction(
     val latitude: Double,
     val longitude: Double,
     val photoReference: String?,
-    val dayNumber: Int = 1
+    val rating: Double? = 0.0,
+    val totalRatings: Int? = 0,
+    val dayNumber: Int = 1,
+    val distanceFromAnchor: String? = null // e.g., "200m from Hotel"
 )
+
+data class Hotel(
+    val id: String,
+    val name: String,
+    val address: String,
+    val latitude: Double,
+    val longitude: Double,
+    val rating: Double?,
+    val userRatingsTotal: Int?,
+    val photoReference: String?,
+    val bookingStatus: BookingStatus = BookingStatus.NONE
+)
+
+enum class BookingStatus {
+    NONE,
+    INTERESTED,
+    PLANNING_TO_BOOK,
+    BOOKED
+}
 
 data class WeatherInfo(
     val cityName: String,

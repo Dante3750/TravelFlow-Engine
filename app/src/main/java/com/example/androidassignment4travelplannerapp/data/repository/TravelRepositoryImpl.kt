@@ -65,12 +65,22 @@ class TravelRepositoryImpl @Inject constructor(
         }
     }
 
-    override suspend fun fetchNearbyAttractions(lat: Double, lon: Double): List<Attraction> {
+    override suspend fun fetchNearbyAttractions(
+        lat: Double, 
+        lon: Double, 
+        pageToken: String?
+    ): Pair<List<Attraction>, String?> {
         return try {
-            val location = "$lat,$lon"
-            val response = travelApiService.getNearbyPlaces(location, 5000, "tourist_attraction", googleKey)
+            val location = if (pageToken == null) "$lat,$lon" else null
+            val response = travelApiService.getNearbyPlaces(
+                location = location,
+                radius = 10000, // Increased radius to find more places
+                type = "tourist_attraction",
+                pageToken = pageToken,
+                apiKey = googleKey
+            )
             
-            response.results.map { result ->
+            val attractions = response.results.map { result ->
                 val rawType = result.types?.firstOrNull() ?: "attraction"
                 val displayType = rawType.replace("_", " ").lowercase()
                     .replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() }
@@ -81,11 +91,57 @@ class TravelRepositoryImpl @Inject constructor(
                     category = if (rawType == "tourist_attraction") "Nearby Place" else displayType,
                     latitude = result.geometry.location.lat,
                     longitude = result.geometry.location.lng,
+                    photoReference = result.photos?.firstOrNull()?.photoReference,
+                    rating = result.rating,
+                    totalRatings = result.userRatingsTotal
+                )
+            }.sortedByDescending { it.rating ?: 0.0 } // Sort by rating
+
+            Pair(attractions, response.nextPageToken)
+        } catch (_: Exception) {
+            Pair(emptyList(), null)
+        }
+    }
+
+    override suspend fun fetchNearbyHotels(lat: Double, lon: Double): List<Hotel> {
+        return try {
+            val response = travelApiService.getNearbyPlaces(
+                location = "$lat,$lon",
+                radius = 5000,
+                type = "lodging",
+                apiKey = googleKey
+            )
+            
+            response.results.map { result ->
+                Hotel(
+                    id = result.placeId,
+                    name = result.name,
+                    address = result.address ?: "Address not available",
+                    latitude = result.geometry.location.lat,
+                    longitude = result.geometry.location.lng,
+                    rating = result.rating,
+                    userRatingsTotal = result.userRatingsTotal,
                     photoReference = result.photos?.firstOrNull()?.photoReference
                 )
             }
         } catch (_: Exception) {
             emptyList()
+        }
+    }
+
+    override suspend fun pinHotelToTrip(tripId: Int, hotel: Hotel) {
+        val trip = tripDao.getTripById(tripId)
+        trip?.let {
+            val updated = it.copy(pinnedHotelJson = Gson().toJson(hotel))
+            tripDao.insertTrip(updated)
+        }
+    }
+
+    override suspend fun removeHotelFromTrip(tripId: Int) {
+        val trip = tripDao.getTripById(tripId)
+        trip?.let {
+            val updated = it.copy(pinnedHotelJson = null)
+            tripDao.insertTrip(updated)
         }
     }
 
@@ -116,7 +172,7 @@ class TravelRepositoryImpl @Inject constructor(
             lat = attraction.latitude,
             lon = attraction.longitude,
             xid = attraction.id,
-            dayNumber = day,
+            dayNumber = day
         )
         tripDao.insertPlace(entity)
     }

@@ -28,14 +28,11 @@ android {
             properties.load(propertiesFile.inputStream())
         }
 
-        val googleKey = properties.getProperty("GOOGLE_MAPS_KEY") ?: ""
         val weatherKey = properties.getProperty("WEATHER_API_KEY") ?: ""
         val otmKey = properties.getProperty("OPEN_TRIP_MAP_KEY") ?: ""
 
-        buildConfigField("String", "GOOGLE_MAPS_KEY", "\"$googleKey\"")
         buildConfigField("String", "WEATHER_API_KEY", "\"$weatherKey\"")
         buildConfigField("String", "OPEN_TRIP_MAP_KEY", "\"$otmKey\"")
-        manifestPlaceholders["GOOGLE_MAPS_KEY"] = googleKey
     }
 
     buildTypes {

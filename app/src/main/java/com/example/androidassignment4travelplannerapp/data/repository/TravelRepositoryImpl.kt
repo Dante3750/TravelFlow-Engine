@@ -11,7 +11,6 @@ import com.google.gson.Gson
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
-import java.util.Locale
 import javax.inject.Inject
 
 class TravelRepositoryImpl @Inject constructor(
@@ -171,22 +170,22 @@ class TravelRepositoryImpl @Inject constructor(
         }
     }
 
-    override suspend fun fetchPlaceDetails(placeId: String): GooglePlaceDetailModel {
+    override suspend fun fetchPlaceDetails(placeId: String): PlaceDetailModel {
         return try {
             val otmDetail = otmApiService.getPlaceDetail(placeId, otmKey)
-            GooglePlaceDetailModel(
+            PlaceDetailModel(
                 name = otmDetail.name,
                 rating = 4.0,
                 address = otmDetail.address?.road ?: "Address not available",
-                summary = GoogleSummary(otmDetail.wikipedia_extracts?.text),
-                photos = if (otmDetail.image != null) listOf(GooglePhoto(otmDetail.image)) else null,
-                geometry = GoogleGeometry(
-                    GoogleLatLng(otmDetail.point.lat, otmDetail.point.lon)
+                summary = PlaceSummary(otmDetail.wikipedia_extracts?.text),
+                photos = if (otmDetail.image != null) listOf(PlacePhoto(otmDetail.image)) else null,
+                geometry = PlaceGeometry(
+                    PlaceLatLng(otmDetail.point.lat, otmDetail.point.lon)
                 ),
                 userRatingsTotal = 100
             )
         } catch (_: Exception) {
-            GooglePlaceDetailModel("", 0.0, "", null, null, GoogleGeometry(GoogleLatLng(0.0, 0.0)), 0)
+            PlaceDetailModel("", 0.0, "", null, null, PlaceGeometry(PlaceLatLng(0.0, 0.0)), 0)
         }
     }
 

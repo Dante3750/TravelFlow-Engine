@@ -30,7 +30,7 @@ interface ITravelRepository {
         lon: Double
     ): List<NearbyAmenity>
 
-    suspend fun fetchPlaceDetails(placeId: String): com.example.androidassignment4travelplannerapp.data.remote.GooglePlaceDetailModel
+    suspend fun fetchPlaceDetails(placeId: String): com.example.androidassignment4travelplannerapp.data.remote.PlaceDetailModel
     fun getPhotoUrl(photoReference: String?): String?
 
     // Local Storage

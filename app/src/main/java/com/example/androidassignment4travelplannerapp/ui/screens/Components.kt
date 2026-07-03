@@ -32,7 +32,7 @@ import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
 import coil.compose.SubcomposeAsyncImage
 import com.example.androidassignment4travelplannerapp.data.remote.ForecastResponse
-import com.example.androidassignment4travelplannerapp.data.remote.GooglePlaceDetailModel
+import com.example.androidassignment4travelplannerapp.data.remote.PlaceDetailModel
 import com.example.androidassignment4travelplannerapp.data.remote.WeatherResponse
 import com.example.androidassignment4travelplannerapp.domain.model.*
 import com.example.androidassignment4travelplannerapp.ui.viewmodel.TravelViewModel
@@ -104,7 +104,7 @@ fun PhotoPlaceholder(modifier: Modifier = Modifier) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PremiumPlaceDetailSheet(
-    detail: GooglePlaceDetailModel,
+    detail: PlaceDetailModel,
     photoUrl: String?,
     onDismiss: () -> Unit
 ) {

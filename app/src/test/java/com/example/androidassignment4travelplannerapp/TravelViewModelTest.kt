@@ -1,11 +1,9 @@
 package com.example.androidassignment4travelplannerapp
 
-import com.example.androidassignment4travelplannerapp.domain.model.WeatherInfo
+import com.example.androidassignment4travelplannerapp.domain.model.*
 import com.example.androidassignment4travelplannerapp.domain.repository.ITravelRepository
 import com.example.androidassignment4travelplannerapp.domain.usecase.*
 import com.example.androidassignment4travelplannerapp.ui.viewmodel.TravelViewModel
-import com.google.android.libraries.places.api.model.Place
-import io.mockk.every
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
@@ -35,6 +33,7 @@ class TravelViewModelTest {
             GetTripsUseCase(repository),
             SearchLocationsUseCase(repository),
             GetNearbyAttractionsUseCase(repository),
+            GetNearbyHotelsUseCase(repository),
             SaveTripUseCase(repository),
             DeleteTripUseCase(repository),
             SyncTripWeatherUseCase(repository),
@@ -43,7 +42,11 @@ class TravelViewModelTest {
             FetchForecastJsonUseCase(repository),
             GetPlaceDetailsUseCase(repository),
             GetAttractionsForTripUseCase(repository),
-            GetPhotoUrlUseCase(repository)
+            GetPhotoUrlUseCase(repository),
+            PinHotelUseCase(repository),
+            RemoveHotelUseCase(repository),
+            UpdateTripDatesUseCase(repository),
+            FetchNearbyAmenitiesUseCase(repository)
         )
     }
 
@@ -59,7 +62,7 @@ class TravelViewModelTest {
 
     @Test
     fun `onQueryChanged should update suggestions when query is valid`() = runTest {
-        val mockPlaces = listOf(mockk<Place>())
+        val mockPlaces = listOf(PlaceSuggestion("1", "Paris", "France", 48.8, 2.3))
         coEvery { repository.searchLocations("Paris") } returns mockPlaces
 
         viewModel.onQueryChanged("Paris")
@@ -69,20 +72,14 @@ class TravelViewModelTest {
     }
 
     @Test
-    fun `selectSuggestion should update weather and search results`() = runTest {
-        val mockPlace: Place = mockk(relaxed = true) {
-            every { name } returns "London"
-            every { latLng } returns com.google.android.gms.maps.model.LatLng(51.5, -0.1)
-        }
-        val mockWeather = WeatherInfo("London", 20, "Cloudy", 51.5, -0.1)
+    fun `selectSuggestion should update results`() = runTest {
+        val mockPlace = PlaceSuggestion("1", "London", "UK", 51.5, -0.1)
         
-        coEvery { repository.fetchWeather("London") } returns mockWeather
-        coEvery { repository.fetchNearbyAttractions(51.5, -0.1) } returns emptyList()
+        coEvery { repository.fetchNearbyAttractions(51.5, -0.1, any(), any()) } returns Pair(emptyList(), null)
 
         viewModel.selectSuggestion(mockPlace)
 
-        assertEquals("London", viewModel.currentWeather.value?.name)
-        assertEquals(20.0, viewModel.currentWeather.value?.main?.temp)
+        assertEquals("London", viewModel.activeDiscoveryCity.value)
     }
 
     @Test

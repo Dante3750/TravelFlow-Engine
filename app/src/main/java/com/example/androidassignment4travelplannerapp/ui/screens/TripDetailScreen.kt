@@ -266,7 +266,7 @@ fun TripDetailScreen(
     selectedDetail?.let {
         PremiumPlaceDetailSheet(
             it, 
-            viewModel.getPhotoUrl(it.photos?.firstOrNull()?.photoReference), 
+            it.photos?.firstOrNull()?.url,
             onDismiss = viewModel::clearPlaceDetail
         )
     }

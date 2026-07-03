@@ -18,9 +18,6 @@
         android:theme="@style/Theme.AndroidAssignment4TravelPlannerApp"
         android:usesCleartextTraffic="true">
 
-        <meta-data
-            android:name="com.google.android.geo.API_KEY"
-            android:value="${GOOGLE_MAPS_KEY}" />
 
         <activity
             android:name=".MainActivity"

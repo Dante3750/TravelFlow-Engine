@@ -4,7 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.androidassignment4travelplannerapp.data.remote.ForecastResponse
 import com.example.androidassignment4travelplannerapp.data.remote.WeatherResponse
-import com.example.androidassignment4travelplannerapp.data.remote.GooglePlaceDetailModel
+import com.example.androidassignment4travelplannerapp.data.remote.PlaceDetailModel
 import com.example.androidassignment4travelplannerapp.domain.model.*
 import com.example.androidassignment4travelplannerapp.domain.usecase.*
 import com.google.gson.Gson
@@ -79,8 +79,8 @@ class TravelViewModel @Inject constructor(
     private val _selectedTripPlaces = MutableStateFlow<List<Attraction>>(emptyList())
     val selectedTripPlaces: StateFlow<List<Attraction>> = _selectedTripPlaces
 
-    private val _selectedPlaceDetail = MutableStateFlow<GooglePlaceDetailModel?>(null)
-    val selectedPlaceDetail: StateFlow<GooglePlaceDetailModel?> = _selectedPlaceDetail
+    private val _selectedPlaceDetail = MutableStateFlow<PlaceDetailModel?>(null)
+    val selectedPlaceDetail: StateFlow<PlaceDetailModel?> = _selectedPlaceDetail
 
     private val _activeDiscoveryCity = MutableStateFlow<String?>(null)
     val activeDiscoveryCity: StateFlow<String?> = _activeDiscoveryCity

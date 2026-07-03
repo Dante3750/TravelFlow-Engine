@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -18,6 +17,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.example.androidassignment4travelplannerapp.data.remote.ForecastResponse
@@ -59,13 +59,18 @@ fun TripDetailScreen(
         }
     }
 
+    var showEditDates by remember { mutableStateOf(false) }
+
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             CenterAlignedTopAppBar(
                 title = { Text(trip.title, fontWeight = FontWeight.Bold) },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") } },
-                actions = { IconButton(onClick = { viewModel.deleteTrip(trip.id); onBack() }) { Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error) } },
+                actions = { 
+                    IconButton(onClick = { showEditDates = true }) { Icon(Icons.Default.EditCalendar, contentDescription = "Edit Dates") }
+                    IconButton(onClick = { viewModel.deleteTrip(trip.id); onBack() }) { Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error) } 
+                },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = MaterialTheme.colorScheme.background)
             )
         }
@@ -95,7 +100,6 @@ fun TripDetailScreen(
                         Text(info, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.secondary, fontWeight = FontWeight.Medium)
                     }
 
-                    // 1. Pinned Hotel Card (The Anchor)
                     trip.pinnedHotel?.let { hotel ->
                         Spacer(modifier = Modifier.height(20.dp))
                         Text("Your Stay", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
@@ -110,7 +114,7 @@ fun TripDetailScreen(
                                         AsyncImage(model = viewModel.getPhotoUrl(hotel.photoReference), contentDescription = null, contentScale = ContentScale.Crop)
                                     } else {
                                         Box(Modifier.background(MaterialTheme.colorScheme.primaryContainer), contentAlignment = Alignment.Center) {
-                                            Icon(Icons.Default.Hotel, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                            Icon(imageVector = Icons.Default.Hotel, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                                         }
                                     }
                                 }
@@ -166,7 +170,6 @@ fun TripDetailScreen(
                             myLocationButtonEnabled = false
                         )
                     ) {
-                        // Trip Center or Hotel Anchor
                         val mainMarkerPos = trip.pinnedHotel?.let { LatLng(it.latitude, it.longitude) } ?: cityLatLng
                         Marker(
                             state = MarkerState(position = mainMarkerPos), 
@@ -175,9 +178,18 @@ fun TripDetailScreen(
                         )
                         
                         savedPlaces.forEach { place ->
+                            val hue = when(place.category) {
+                                "Landmark" -> BitmapDescriptorFactory.HUE_AZURE
+                                "Religious Site" -> BitmapDescriptorFactory.HUE_VIOLET
+                                "Nature" -> BitmapDescriptorFactory.HUE_GREEN
+                                "Museum" -> BitmapDescriptorFactory.HUE_ORANGE
+                                "Entertainment" -> BitmapDescriptorFactory.HUE_ROSE
+                                else -> BitmapDescriptorFactory.HUE_RED
+                            }
                             Marker(
                                 state = MarkerState(position = LatLng(place.latitude, place.longitude)), 
                                 title = place.name, 
+                                icon = BitmapDescriptorFactory.defaultMarker(hue),
                                 onClick = { 
                                     viewModel.setMapFocus(place.latitude, place.longitude)
                                     viewModel.fetchPlaceDetail(place.id)
@@ -195,33 +207,52 @@ fun TripDetailScreen(
             for (day in 1..daysCount) {
                 val placesForDay = groupedPlaces[day] ?: emptyList()
                 
-                if (placesForDay.isNotEmpty() || day == 1) {
+                if (placesForDay.isNotEmpty() || day <= daysCount) {
                     item {
-                        Text(
-                            "Day $day", 
-                            style = MaterialTheme.typography.titleMedium, 
-                            fontWeight = FontWeight.Bold, 
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(horizontal = 20.dp)
-                        )
+                        val dayDate = Date(trip.startDate + (day - 1) * 86400000L)
+                        Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
+                            Text(
+                                text = "Day $day", 
+                                style = MaterialTheme.typography.titleMedium, 
+                                fontWeight = FontWeight.ExtraBold, 
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                text = SimpleDateFormat("EEEE, MMMM dd", Locale.getDefault()).format(dayDate),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color.Gray
+                            )
+                        }
                     }
                     
                     if (placesForDay.isEmpty()) {
                         item {
-                            Text(
-                                "No activities planned for this day.", 
-                                style = MaterialTheme.typography.bodySmall, 
-                                color = Color.Gray,
-                                modifier = Modifier.padding(horizontal = 20.dp)
-                            )
+                            Surface(
+                                modifier = Modifier.padding(horizontal = 20.dp).fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                            ) {
+                                Text(
+                                    "No activities planned yet. Tap 'Find More' to add attractions.", 
+                                    style = MaterialTheme.typography.bodySmall, 
+                                    color = Color.Gray,
+                                    modifier = Modifier.padding(16.dp),
+                                    textAlign = TextAlign.Center
+                                )
+                            }
                         }
                     } else {
                         items(placesForDay, key = { it.id }) { place ->
-                            Box(modifier = Modifier.padding(horizontal = 20.dp)) {
-                                PremiumItineraryPlaceItem(place) { 
-                                    viewModel.setMapFocus(place.latitude, place.longitude)
-                                    viewModel.fetchPlaceDetail(place.id)
-                                }
+                            Box(modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)) {
+                                PremiumItineraryPlaceItem(
+                                    place = place,
+                                    daysCount = daysCount,
+                                    onDayChange = { newDay -> viewModel.addPlaceToTrip(trip.id, place, newDay) },
+                                    onClick = { 
+                                        viewModel.setMapFocus(place.latitude, place.longitude)
+                                        viewModel.fetchPlaceDetail(place.id)
+                                    }
+                                )
                             }
                         }
                     }
@@ -239,7 +270,7 @@ fun TripDetailScreen(
                         modifier = Modifier.fillMaxWidth().height(52.dp),
                         shape = RoundedCornerShape(12.dp)
                     ) {
-                        Icon(Icons.Default.Add, contentDescription = null)
+                        Icon(imageVector = Icons.Default.Add, contentDescription = null)
                         Spacer(modifier = Modifier.width(8.dp))
                         Text("FIND MORE TO ADD", fontWeight = FontWeight.Bold)
                     }
@@ -255,24 +286,18 @@ fun TripDetailScreen(
             onDismiss = viewModel::clearPlaceDetail
         )
     }
-}
 
-@Composable
-fun PremiumItineraryPlaceItem(place: Attraction, onClick: () -> Unit) {
-    Surface(
-        onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surface,
-        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-    ) {
-        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primary, modifier = Modifier.size(10.dp)) {}
-            Spacer(modifier = Modifier.width(16.dp))
-            Column {
-                Text(place.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Text(place.category, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    if (showEditDates) {
+        FullPageDateDialog(
+            cityName = trip.destination,
+            initialTitle = trip.title,
+            initialStart = trip.startDate,
+            initialEnd = trip.endDate,
+            onDismiss = { showEditDates = false },
+            onSave = { _, start, end ->
+                viewModel.updateTripDates(trip.id, start, end)
+                showEditDates = false
             }
-        }
+        )
     }
 }

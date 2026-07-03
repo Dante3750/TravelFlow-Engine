@@ -5,13 +5,13 @@ import androidx.lifecycle.viewModelScope
 import com.example.androidassignment4travelplannerapp.data.remote.ForecastResponse
 import com.example.androidassignment4travelplannerapp.data.remote.WeatherResponse
 import com.example.androidassignment4travelplannerapp.data.remote.GooglePlaceDetailModel
-import com.example.androidassignment4travelplannerapp.data.repository.TravelRepositoryImpl
 import com.example.androidassignment4travelplannerapp.domain.model.*
 import com.example.androidassignment4travelplannerapp.domain.usecase.*
 import com.google.android.libraries.places.api.model.Place
 import com.google.gson.Gson
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -36,7 +36,8 @@ class TravelViewModel @Inject constructor(
     private val getAttractionsForTripUseCase: GetAttractionsForTripUseCase,
     private val getPhotoUrlUseCase: GetPhotoUrlUseCase,
     private val pinHotelUseCase: PinHotelUseCase,
-    private val removeHotelUseCase: RemoveHotelUseCase
+    private val removeHotelUseCase: RemoveHotelUseCase,
+    private val updateTripDatesUseCase: UpdateTripDatesUseCase
 ) : ViewModel() {
 
     val savedTrips: StateFlow<List<Trip>> = getTripsUseCase().stateIn(
@@ -75,6 +76,9 @@ class TravelViewModel @Inject constructor(
     private val _selectedPlaceDetail = MutableStateFlow<GooglePlaceDetailModel?>(null)
     val selectedPlaceDetail: StateFlow<GooglePlaceDetailModel?> = _selectedPlaceDetail
 
+    private val _activeDiscoveryCity = MutableStateFlow<String?>(null)
+    val activeDiscoveryCity: StateFlow<String?> = _activeDiscoveryCity
+
     private var searchJob: Job? = null
 
     fun syncAllTripWeather() {
@@ -86,7 +90,7 @@ class TravelViewModel @Inject constructor(
     fun onQueryChanged(newQuery: String) {
         _searchQuery.value = newQuery
         searchJob?.cancel()
-        if (newQuery.isEmpty()) {
+        if (newQuery.isBlank()) {
             clearData()
             return
         }
@@ -95,52 +99,76 @@ class TravelViewModel @Inject constructor(
             return
         }
         searchJob = viewModelScope.launch {
-            delay(500)
+            delay(300)
             try {
-                _suggestions.value = searchLocationsUseCase(newQuery)
-                _errorMessage.value = null
+                val results = searchLocationsUseCase(newQuery)
+                if (_searchQuery.value == newQuery) {
+                    _suggestions.value = results
+                    _errorMessage.value = null
+                }
             } catch (e: Exception) {
-                _errorMessage.value = if (e is java.net.UnknownHostException) "No internet" else "Error: ${e.message}"
+                if (_searchQuery.value == newQuery) {
+                    _errorMessage.value = if (e is java.net.UnknownHostException) "No internet" else "Error searching"
+                }
             }
         }
     }
 
+    fun clearSearchState() {
+        _searchQuery.value = ""
+        clearData()
+    }
+
     fun startDiscoveryForCity(name: String, lat: Double, lon: Double, trip: Trip? = null) {
-        // Optimization: Avoid redundant re-fetches
-        if (_searchQuery.value == name && _searchResults.value.isNotEmpty()) {
+        // If it's a new city, or we are re-anchoring to a pinned hotel, proceed
+        val isNewCity = _activeDiscoveryCity.value != name
+        val isReAnchoring = trip?.pinnedHotel != null && _searchResults.value.isNotEmpty()
+        
+        if (!isNewCity && !isReAnchoring && _searchResults.value.isNotEmpty()) {
             setMapFocus(lat, lon)
             return
         }
 
-        _searchQuery.value = name
+        _activeDiscoveryCity.value = name
         viewModelScope.launch {
-            clearData()
+            if (isNewCity) clearData()
             
+            // Use hotel location if available, otherwise city center
             val anchorLat = trip?.pinnedHotel?.latitude ?: lat
             val anchorLon = trip?.pinnedHotel?.longitude ?: lon
             setMapFocus(anchorLat, anchorLon)
 
-            try {
-                val weatherInfo = getWeatherUseCase(name)
-                _currentWeather.value = WeatherResponse(
-                    main = com.example.androidassignment4travelplannerapp.data.remote.MainWeather(weatherInfo.currentTemp.toDouble(), 0.0, 0),
-                    weather = listOf(com.example.androidassignment4travelplannerapp.data.remote.WeatherDescription(weatherInfo.description, "")),
-                    name = weatherInfo.cityName,
-                    coord = com.example.androidassignment4travelplannerapp.data.remote.Coord(weatherInfo.latitude, weatherInfo.longitude)
-                )
-                
-                val attractionResult = getNearbyAttractionsUseCase(anchorLat, anchorLon)
-                _searchResults.value = attractionResult.first
-                currentNextPageToken = attractionResult.second
+            launch {
+                try {
+                    val weatherInfo = getWeatherUseCase(name)
+                    _currentWeather.value = WeatherResponse(
+                        main = com.example.androidassignment4travelplannerapp.data.remote.MainWeather(weatherInfo.currentTemp.toDouble(), 0.0, 0),
+                        weather = listOf(com.example.androidassignment4travelplannerapp.data.remote.WeatherDescription(weatherInfo.description, "")),
+                        name = weatherInfo.cityName,
+                        coord = com.example.androidassignment4travelplannerapp.data.remote.Coord(weatherInfo.latitude, weatherInfo.longitude)
+                    )
+                } catch (_: Exception) {}
+            }
 
-                _nearbyHotels.value = getNearbyHotelsUseCase(anchorLat, anchorLon)
+            launch {
+                try {
+                    val attractionResult = getNearbyAttractionsUseCase(anchorLat, anchorLon)
+                    _searchResults.value = attractionResult.first
+                    currentNextPageToken = attractionResult.second
+                } catch (_: Exception) {}
+            }
 
-                val forecastJson = fetchForecastJsonUseCase(name)
-                _forecast.value = Gson().fromJson(forecastJson, ForecastResponse::class.java)
+            launch {
+                try {
+                    _nearbyHotels.value = getNearbyHotelsUseCase(anchorLat, anchorLon)
+                } catch (_: Exception) {}
+            }
 
-                _errorMessage.value = null
-            } catch (e: Exception) {
-                _errorMessage.value = e.message
+            launch {
+                try {
+                    val forecastJson = fetchForecastJsonUseCase(name)
+                    _forecast.value = Gson().fromJson(forecastJson, ForecastResponse::class.java)
+                } catch (_: Exception) {}
             }
         }
     }
@@ -151,7 +179,7 @@ class TravelViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 val result = getNearbyAttractionsUseCase(lat, lon, currentNextPageToken)
-                _searchResults.value = _searchResults.value + result.first
+                _searchResults.value = (_searchResults.value + result.first).sortedByDescending { it.trustScore?.score ?: 0 }
                 currentNextPageToken = result.second
             } catch (e: Exception) {
                 // Fail silently
@@ -160,9 +188,14 @@ class TravelViewModel @Inject constructor(
     }
 
     fun pinHotel(tripId: Int, hotel: Hotel) {
+        val currentCity = _activeDiscoveryCity.value
         viewModelScope.launch {
             pinHotelUseCase(tripId, hotel)
-            startDiscoveryForCity(hotel.name, hotel.latitude, hotel.longitude)
+            if (currentCity != null) {
+                // Fetch latest state to get updated trip
+                val updatedTrip = savedTrips.value.find { it.id == tripId }
+                startDiscoveryForCity(currentCity, hotel.latitude, hotel.longitude, updatedTrip)
+            }
         }
     }
 
@@ -174,9 +207,9 @@ class TravelViewModel @Inject constructor(
 
     fun selectSuggestion(place: Place) {
         _searchQuery.value = place.name ?: ""
+        _suggestions.value = emptyList() // Clear suggestions after selection
         viewModelScope.launch {
             try {
-                // Now we fetch full details only when selected (Cost-Saving)
                 val detail = getPlaceDetailsUseCase(place.id!!)
                 startDiscoveryForCity(
                     name = place.name ?: "", 
@@ -184,7 +217,7 @@ class TravelViewModel @Inject constructor(
                     lon = detail.geometry.location.lng
                 )
             } catch (e: Exception) {
-                _errorMessage.value = e.message
+                _errorMessage.value = "Unable to load location details."
             }
         }
     }
@@ -238,6 +271,12 @@ class TravelViewModel @Inject constructor(
         }
     }
 
+    fun updateTripDates(tripId: Int, start: Long, end: Long) {
+        viewModelScope.launch {
+            updateTripDatesUseCase(tripId, start, end)
+        }
+    }
+
     fun setMapFocus(lat: Double, lon: Double) { _mapFocus.value = Pair(lat, lon) }
     fun getPhotoUrl(ref: String?) = getPhotoUrlUseCase(ref)
     fun clearPlaceDetail() { _selectedPlaceDetail.value = null }
@@ -249,5 +288,6 @@ class TravelViewModel @Inject constructor(
         currentNextPageToken = null
         _currentWeather.value = null
         _forecast.value = null
+        // Note: We don't clear _activeDiscoveryCity here so UI knows what city it's showing
     }
 }

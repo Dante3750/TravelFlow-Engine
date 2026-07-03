@@ -12,7 +12,6 @@ import com.example.androidassignment4travelplannerapp.domain.repository.ITravelR
 import com.google.android.libraries.places.api.Places
 import com.google.android.libraries.places.api.model.AutocompleteSessionToken
 import com.google.android.libraries.places.api.model.Place
-import com.google.android.libraries.places.api.net.FetchPlaceRequest
 import com.google.android.libraries.places.api.net.FindAutocompletePredictionsRequest
 import com.google.android.libraries.places.api.net.PlacesClient
 import com.google.gson.Gson
@@ -53,10 +52,10 @@ class TravelRepositoryImpl @Inject constructor(
             val request = FindAutocompletePredictionsRequest.builder()
                 .setSessionToken(token)
                 .setQuery(query)
+                .setTypesFilter(listOf("locality", "administrative_area_level_3"))
                 .build()
             
             val response = placesClient.findAutocompletePredictions(request).await()
-            // Optimized: Return only light predictions first (Zero cost until selected)
             response.autocompletePredictions.map { prediction ->
                 Place.builder()
                     .setId(prediction.placeId)
@@ -78,28 +77,89 @@ class TravelRepositoryImpl @Inject constructor(
             val location = if (pageToken == null) "$lat,$lon" else null
             val response = travelApiService.getNearbyPlaces(
                 location = location,
-                radius = 10000, 
-                type = "tourist_attraction",
+                radius = 50000, 
+                keyword = "tourist attractions|parks|museums|landmarks|temples|monuments|gardens",
                 pageToken = pageToken,
                 apiKey = googleKey
             )
             
-            val attractions = response.results.map { result ->
-                val rawType = result.types?.firstOrNull() ?: "attraction"
-                val displayType = rawType.replace("_", " ").lowercase()
-                    .replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() }
+            val attractions = response.results.filter { result ->
+                val types = result.types ?: emptyList()
+                val name = result.name.lowercase()
                 
+                val allowed = listOf(
+                    "tourist_attraction", "museum", "park", "place_of_worship", 
+                    "hindu_temple", "church", "mosque", "shrine", "art_gallery", 
+                    "zoo", "aquarium", "amusement_park", "natural_feature", 
+                    "stadium", "shopping_mall", "market", "historic_site", "landmark", 
+                    "town_square", "monument", "garden", "library"
+                )
+                
+                val forbidden = listOf(
+                    "dentist", "doctor", "hospital", "car_repair", "bank", "atm", 
+                    "gas_station", "pharmacy", "local_government_office",
+                    "lawyer", "police", "post_office"
+                )
+                val keywords = listOf("clinic", "repair", "petrol", "cng", "service", "house", "villa")
+
+                val isAllowed = types.any { it in allowed }
+                val isForbidden = (types.any { it in forbidden } && !types.any { it in allowed }) || keywords.any { name.contains(it) }
+                val isHighlyRated = (result.rating ?: 0.0) >= 4.0 && (result.userRatingsTotal ?: 0) > 5
+                
+                (isAllowed || isHighlyRated) && !isForbidden
+            }.map { result ->
+                val types = result.types ?: emptyList()
+                
+                val categoryGroup = when {
+                    types.any { it in listOf("historic_site", "landmark", "town_square", "monument") } -> "Landmark"
+                    types.any { it in listOf("place_of_worship", "hindu_temple", "church", "mosque", "shrine") } -> "Religious Site"
+                    types.any { it in listOf("park", "natural_feature", "garden") } -> "Nature"
+                    types.any { it in listOf("museum", "art_gallery", "library") } -> "Museum"
+                    types.any { it in listOf("amusement_park", "stadium", "zoo", "aquarium") } -> "Entertainment"
+                    types.any { it in listOf("shopping_mall", "market") } -> "Shopping"
+                    else -> "Tourist Spot"
+                }
+                
+                // ADVANCED TRUST SCORE ENGINE
+                val rating = result.rating ?: 0.0
+                val reviews = result.userRatingsTotal ?: 0
+                
+                val rawScore = ((rating / 5.0) * 70.0 + (if (reviews > 500) 30.0 else if (reviews > 50) 15.0 else 0.0)).toInt().coerceIn(0, 100)
+                
+                val tier = when {
+                    reviews < 10 -> TrustTier.LIMITED_DATA
+                    rawScore >= 85 -> TrustTier.HIGHLY_TRUSTED
+                    rawScore >= 60 -> TrustTier.RELIABLE
+                    else -> TrustTier.UNVERIFIED
+                }
+
+                val reason = when (tier) {
+                    TrustTier.HIGHLY_TRUSTED -> "High rating from ${reviews}+ verified visitors."
+                    TrustTier.RELIABLE -> "Solid community feedback with consistent visits."
+                    TrustTier.LIMITED_DATA -> "New or emerging spot with few recent reviews."
+                    TrustTier.UNVERIFIED -> "Mixed feedback or inconsistent visit data."
+                }
+
+                val trustObj = TrustScore(
+                    score = rawScore,
+                    tier = tier,
+                    reason = reason,
+                    reviewDensity = reviews.toDouble() / 10.0, // Mock density
+                    verificationLevel = if (reviews > 200) 3 else if (reviews > 50) 2 else 1
+                )
+
                 Attraction(
                     id = result.placeId,
                     name = result.name,
-                    category = if (rawType == "tourist_attraction") "Nearby Place" else displayType,
+                    category = categoryGroup,
                     latitude = result.geometry.location.lat,
                     longitude = result.geometry.location.lng,
                     photoReference = result.photos?.firstOrNull()?.photoReference,
                     rating = result.rating,
-                    totalRatings = result.userRatingsTotal
+                    totalRatings = result.userRatingsTotal,
+                    trustScore = trustObj
                 )
-            }.sortedByDescending { it.rating ?: 0.0 }
+            }.sortedByDescending { it.trustScore?.score ?: 0 }
             
             Pair(attractions, response.nextPageToken)
         } catch (_: Exception) {
@@ -117,10 +177,16 @@ class TravelRepositoryImpl @Inject constructor(
             )
             
             response.results.map { result ->
+                val rawAddress = result.address ?: "Address not available"
+                // Standardize English Capitalization for addresses
+                val formattedAddress = rawAddress.split(" ").joinToString(" ") { word ->
+                    word.lowercase().replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() }
+                }
+
                 Hotel(
                     id = result.placeId,
                     name = result.name,
-                    address = result.address ?: "Address not available",
+                    address = formattedAddress,
                     latitude = result.geometry.location.lat,
                     longitude = result.geometry.location.lng,
                     rating = result.rating,
@@ -150,11 +216,6 @@ class TravelRepositoryImpl @Inject constructor(
     }
 
     override suspend fun fetchPlaceDetails(placeId: String): com.example.androidassignment4travelplannerapp.data.remote.GooglePlaceDetailModel {
-        // First try to get from Google SDK for LatLng (Cheapest way)
-        val placeRequest = FetchPlaceRequest.builder(placeId, listOf(Place.Field.LAT_LNG, Place.Field.NAME)).build()
-        val sdkPlace = placesClient.fetchPlace(placeRequest).await().place
-        
-        // Then get full details from Web API for rich summary/photos
         return travelApiService.getPlaceDetails(placeId, apiKey = googleKey).result
     }
 
@@ -195,6 +256,14 @@ class TravelRepositoryImpl @Inject constructor(
         val trip = tripDao.getTripById(tripId)
         trip?.let {
             val updated = it.copy(weatherInfo = weatherSummary, forecastJson = forecastJson)
+            tripDao.insertTrip(updated)
+        }
+    }
+
+    override suspend fun updateTripDates(tripId: Int, start: Long, end: Long) {
+        val trip = tripDao.getTripById(tripId)
+        trip?.let {
+            val updated = it.copy(startDate = start, endDate = end)
             tripDao.insertTrip(updated)
         }
     }

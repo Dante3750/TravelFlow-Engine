@@ -11,7 +11,7 @@ data class Trip(
     val weatherSummary: String?,
     val forecastJson: String?,
     val photoReference: String?,
-    val pinnedHotel: Hotel? = null // The "Anchor" for recommendations
+    val pinnedHotel: Hotel? = null
 )
 
 data class Attraction(
@@ -24,8 +24,23 @@ data class Attraction(
     val rating: Double? = 0.0,
     val totalRatings: Int? = 0,
     val dayNumber: Int = 1,
-    val distanceFromAnchor: String? = null // e.g., "200m from Hotel"
+    val trustScore: TrustScore? = null
 )
+
+data class TrustScore(
+    val score: Int,
+    val tier: TrustTier,
+    val reason: String,
+    val reviewDensity: Double, // ratings per month or similar (estimated)
+    val verificationLevel: Int // 0-3 scale
+)
+
+enum class TrustTier {
+    HIGHLY_TRUSTED,
+    RELIABLE,
+    LIMITED_DATA,
+    UNVERIFIED
+}
 
 data class Hotel(
     val id: String,

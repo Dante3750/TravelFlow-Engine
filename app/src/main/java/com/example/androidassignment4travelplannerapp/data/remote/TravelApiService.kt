@@ -9,8 +9,9 @@ interface TravelApiService {
     suspend fun getNearbyPlaces(
         @Query("location") location: String?,
         @Query("radius") radius: Int = 5000,
-        @Query("type") type: String = "tourist_attraction",
-        @Query("pagetoken") pageToken: String? = null, // Supports "Load More" chunks
+        @Query("type") type: String? = null,
+        @Query("keyword") keyword: String? = null,
+        @Query("pagetoken") pageToken: String? = null,
         @Query("key") apiKey: String
     ): GooglePlacesResponse
 

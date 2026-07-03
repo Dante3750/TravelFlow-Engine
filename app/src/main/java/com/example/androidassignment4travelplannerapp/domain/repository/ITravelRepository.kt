@@ -35,6 +35,7 @@ interface ITravelRepository {
     suspend fun addAttractionToTrip(tripId: Int, attraction: Attraction, day: Int)
     suspend fun getAttractionsForTrip(tripId: Int): List<Attraction>
     suspend fun updateTripWeather(tripId: Int, weatherSummary: String, forecastJson: String)
+    suspend fun updateTripDates(tripId: Int, start: Long, end: Long)
     
     // New: Hotel Persistence
     suspend fun pinHotelToTrip(tripId: Int, hotel: Hotel)

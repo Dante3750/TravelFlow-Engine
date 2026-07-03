@@ -7,6 +7,7 @@ class GetNearbyAttractionsUseCase @Inject constructor(private val repository: IT
     suspend operator fun invoke(
         lat: Double, 
         lon: Double, 
-        pageToken: String? = null
-    ) = repository.fetchNearbyAttractions(lat, lon, pageToken)
+        pageToken: String? = null,
+        radius: Int? = null
+    ) = repository.fetchNearbyAttractions(lat, lon, pageToken, radius)
 }

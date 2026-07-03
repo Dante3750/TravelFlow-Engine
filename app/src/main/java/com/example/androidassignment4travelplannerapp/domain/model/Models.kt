@@ -31,9 +31,28 @@ data class TrustScore(
     val score: Int,
     val tier: TrustTier,
     val reason: String,
-    val reviewDensity: Double, // ratings per month or similar (estimated)
-    val verificationLevel: Int // 0-3 scale
+    val ratingFactor: Double,
+    val volumeFactor: Double,
+    val recencyFactor: Double,
+    val verificationLevel: Int
 )
+
+data class NearbyAmenity(
+    val id: String,
+    val type: AmenityType,
+    val name: String,
+    val lat: Double,
+    val lon: Double,
+    val address: String?
+)
+
+enum class AmenityType {
+    TOILET,
+    POLICE,
+    PHARMACY,
+    TEA_STALL,
+    SMOKING_SPOT
+}
 
 enum class TrustTier {
     HIGHLY_TRUSTED,

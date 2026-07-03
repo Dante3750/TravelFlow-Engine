@@ -37,7 +37,8 @@ class TravelViewModel @Inject constructor(
     private val getPhotoUrlUseCase: GetPhotoUrlUseCase,
     private val pinHotelUseCase: PinHotelUseCase,
     private val removeHotelUseCase: RemoveHotelUseCase,
-    private val updateTripDatesUseCase: UpdateTripDatesUseCase
+    private val updateTripDatesUseCase: UpdateTripDatesUseCase,
+    private val fetchNearbyAmenitiesUseCase: FetchNearbyAmenitiesUseCase
 ) : ViewModel() {
 
     val savedTrips: StateFlow<List<Trip>> = getTripsUseCase().stateIn(
@@ -49,6 +50,12 @@ class TravelViewModel @Inject constructor(
 
     private val _nearbyHotels = MutableStateFlow<List<Hotel>>(emptyList())
     val nearbyHotels: StateFlow<List<Hotel>> = _nearbyHotels
+
+    private val _nearStayResults = MutableStateFlow<List<Attraction>>(emptyList())
+    val nearStayResults: StateFlow<List<Attraction>> = _nearStayResults
+
+    private val _nearbyAmenities = MutableStateFlow<List<NearbyAmenity>>(emptyList())
+    val nearbyAmenities: StateFlow<List<NearbyAmenity>> = _nearbyAmenities
 
     private var currentNextPageToken: String? = null
 
@@ -158,9 +165,25 @@ class TravelViewModel @Inject constructor(
                 } catch (_: Exception) {}
             }
 
+            // STAY-ANCHORED DISCOVERY: Narrow 5km radius around anchor
+            if (trip?.pinnedHotel != null) {
+                launch {
+                    try {
+                        val nearStay = getNearbyAttractionsUseCase(anchorLat, anchorLon, radius = 5000)
+                        _nearStayResults.value = nearStay.first.take(15)
+                    } catch (_: Exception) {}
+                }
+            }
+
             launch {
                 try {
                     _nearbyHotels.value = getNearbyHotelsUseCase(anchorLat, anchorLon)
+                } catch (_: Exception) {}
+            }
+
+            launch {
+                try {
+                    _nearbyAmenities.value = fetchNearbyAmenitiesUseCase(anchorLat, anchorLon)
                 } catch (_: Exception) {}
             }
 

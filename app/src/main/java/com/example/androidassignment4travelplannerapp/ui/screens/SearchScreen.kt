@@ -1,6 +1,5 @@
 package com.example.androidassignment4travelplannerapp.ui.screens
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -41,6 +40,8 @@ fun SearchScreen(
     val query by viewModel.searchQuery.collectAsState()
     val searchResults by viewModel.searchResults.collectAsState()
     val nearbyHotels by viewModel.nearbyHotels.collectAsState()
+    val nearStayResults by viewModel.nearStayResults.collectAsState()
+    val nearbyAmenities by viewModel.nearbyAmenities.collectAsState()
     val weather by viewModel.currentWeather.collectAsState()
     val forecast by viewModel.forecast.collectAsState()
     val suggestions by viewModel.suggestions.collectAsState()
@@ -147,8 +148,9 @@ fun SearchScreen(
                             TabRowDefaults.SecondaryIndicator(Modifier.tabIndicatorOffset(tabPositions[selectedTab]), color = MaterialTheme.colorScheme.primary) 
                         }
                     ) {
-                        Tab(selected = selectedTab == 0, onClick = { selectedTab = 0 }, text = { Text("THINGS TO DO") })
-                        Tab(selected = selectedTab == 1, onClick = { selectedTab = 1 }, text = { Text("HOTELS") })
+                        Tab(selected = selectedTab == 0, onClick = { selectedTab = 0 }, text = { Text("SIGHTS") })
+                        Tab(selected = selectedTab == 1, onClick = { selectedTab = 1 }, text = { Text("STAYS") })
+                        Tab(selected = selectedTab == 2, onClick = { selectedTab = 2 }, text = { Text("ESSENTIALS") })
                     }
                     
                     if (selectedTab == 0) {
@@ -190,6 +192,19 @@ fun SearchScreen(
 
                     if (suggestions.isEmpty()) {
                         if (selectedTab == 0) {
+                            if (activeCityTrip?.pinnedHotel != null && nearStayResults.isNotEmpty()) {
+                                item {
+                                    Text("Within 15 mins of your stay", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary)
+                                    Spacer(Modifier.height(12.dp))
+                                    LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                                        items(nearStayResults) { attraction ->
+                                            BoutiqueAttractionCard(attraction, viewModel, onAdd = { placeToSave = it }, onClick = { viewModel.fetchPlaceDetail(attraction.id) })
+                                        }
+                                    }
+                                    Spacer(Modifier.height(24.dp))
+                                }
+                            }
+
                             val displayCategories = if (selectedCategory == "All") categories else categories.filter { it.second == selectedCategory }
                             
                             displayCategories.forEach { (label, id) ->
@@ -253,6 +268,10 @@ fun SearchScreen(
                                         }
                                     }
                                 )
+                            }
+                        } else if (selectedTab == 2) {
+                            items(nearbyAmenities) { amenity ->
+                                AmenityItem(amenity)
                             }
                         }
                     }

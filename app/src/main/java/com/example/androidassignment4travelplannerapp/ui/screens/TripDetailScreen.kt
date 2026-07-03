@@ -19,6 +19,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.androidassignment4travelplannerapp.data.remote.ForecastResponse
 import com.example.androidassignment4travelplannerapp.domain.model.*
@@ -31,6 +32,18 @@ import com.google.maps.android.compose.*
 import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.TimeUnit
+import kotlin.math.*
+
+fun calculateDistance(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
+    val r = 6371 // Radius of the earth in km
+    val dLat = Math.toRadians(lat2 - lat1)
+    val dLon = Math.toRadians(lon2 - lon1)
+    val a = sin(dLat / 2) * sin(dLat / 2) +
+            cos(Math.toRadians(lat1)) * cos(Math.toRadians(lat2)) *
+            sin(dLon / 2) * sin(dLon / 2)
+    val c = 2 * atan2(sqrt(a), sqrt(1 - a))
+    return r * c
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -242,6 +255,28 @@ fun TripDetailScreen(
                             }
                         }
                     } else {
+                        // ITINERARY HEALTH CHECK: Conflict warnings
+                        if (placesForDay.size >= 2) {
+                            val distances = placesForDay.zipWithNext { a, b ->
+                                calculateDistance(a.latitude, a.longitude, b.latitude, b.longitude)
+                            }
+                            if (distances.any { it > 40 }) {
+                                item {
+                                    Surface(
+                                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp).fillMaxWidth(),
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f)
+                                    ) {
+                                        Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
+                                            Spacer(Modifier.width(8.dp))
+                                            Text("Tight Schedule: Some spots are 40km+ apart.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onErrorContainer)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
                         items(placesForDay, key = { it.id }) { place ->
                             Box(modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)) {
                                 PremiumItineraryPlaceItem(

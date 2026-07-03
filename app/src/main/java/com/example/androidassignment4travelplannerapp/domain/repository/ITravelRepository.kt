@@ -17,13 +17,19 @@ interface ITravelRepository {
     suspend fun fetchNearbyAttractions(
         lat: Double, 
         lon: Double, 
-        pageToken: String? = null
+        pageToken: String? = null,
+        radius: Int? = null
     ): Pair<List<Attraction>, String?> // Returns list + next page token
 
     suspend fun fetchNearbyHotels(
         lat: Double, 
         lon: Double
     ): List<Hotel>
+
+    suspend fun fetchNearbyAmenities(
+        lat: Double, 
+        lon: Double
+    ): List<NearbyAmenity>
 
     suspend fun fetchPlaceDetails(placeId: String): com.example.androidassignment4travelplannerapp.data.remote.GooglePlaceDetailModel
     fun getPhotoUrl(photoReference: String?): String?

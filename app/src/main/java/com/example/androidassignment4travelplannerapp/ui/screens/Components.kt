@@ -23,6 +23,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -441,8 +442,9 @@ fun BoutiqueAttractionCard(
                     text = attraction.name, 
                     style = MaterialTheme.typography.titleMedium, 
                     fontWeight = FontWeight.ExtraBold, 
-                    maxLines = 1, 
-                    overflow = TextOverflow.Ellipsis
+                    maxLines = 2, 
+                    overflow = TextOverflow.Ellipsis,
+                    lineHeight = 18.sp
                 )
                 
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 4.dp)) {
@@ -496,6 +498,39 @@ fun BoutiqueAttractionCard(
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+fun AmenityItem(amenity: NearbyAmenity) {
+    Surface(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+    ) {
+        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            val (icon, color) = when(amenity.type) {
+                AmenityType.TOILET -> Icons.Default.Wc to Color(0xFF795548)
+                AmenityType.POLICE -> Icons.Default.LocalPolice to Color(0xFF1976D2)
+                AmenityType.PHARMACY -> Icons.Default.LocalPharmacy to Color(0xFFD32F2F)
+                AmenityType.TEA_STALL -> Icons.Default.EmojiFoodBeverage to Color(0xFFFFA000)
+                AmenityType.SMOKING_SPOT -> Icons.Default.SmokingRooms to Color(0xFF616161)
+            }
+            
+            Surface(shape = CircleShape, color = color.copy(alpha = 0.1f), modifier = Modifier.size(48.dp)) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(icon, null, tint = color, modifier = Modifier.size(24.dp))
+                }
+            }
+            
+            Spacer(modifier = Modifier.width(16.dp))
+            
+            Column {
+                Text(amenity.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                amenity.address?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = Color.Gray) }
             }
         }
     }
@@ -569,8 +604,9 @@ fun HotelCardItem(hotel: Hotel, viewModel: TravelViewModel, onPinClick: () -> Un
                         Text(
                             text = hotel.name,
                             style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Black),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            lineHeight = 22.sp
                         )
                         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
                             Icon(Icons.Default.LocationOn, null, tint = Color.Gray, modifier = Modifier.size(14.dp))

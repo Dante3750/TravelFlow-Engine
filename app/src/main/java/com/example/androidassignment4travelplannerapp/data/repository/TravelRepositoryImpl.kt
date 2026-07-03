@@ -5,8 +5,7 @@ import com.example.androidassignment4travelplannerapp.data.local.SavedPlaceEntit
 import com.example.androidassignment4travelplannerapp.data.local.TripDao
 import com.example.androidassignment4travelplannerapp.data.mapper.toDomain
 import com.example.androidassignment4travelplannerapp.data.mapper.toEntity
-import com.example.androidassignment4travelplannerapp.data.remote.TravelApiService
-import com.example.androidassignment4travelplannerapp.data.remote.WeatherApiService
+import com.example.androidassignment4travelplannerapp.data.remote.*
 import com.example.androidassignment4travelplannerapp.domain.model.*
 import com.example.androidassignment4travelplannerapp.domain.repository.ITravelRepository
 import com.google.android.libraries.places.api.Places
@@ -25,6 +24,7 @@ import javax.inject.Inject
 class TravelRepositoryImpl @Inject constructor(
     private val travelApiService: TravelApiService,
     private val weatherApiService: WeatherApiService,
+    private val overpassApiService: OverpassApiService,
     private val tripDao: TripDao,
     @ApplicationContext context: Context,
 ) : ITravelRepository {
@@ -71,13 +71,14 @@ class TravelRepositoryImpl @Inject constructor(
     override suspend fun fetchNearbyAttractions(
         lat: Double, 
         lon: Double, 
-        pageToken: String?
+        pageToken: String?,
+        radius: Int?
     ): Pair<List<Attraction>, String?> {
         return try {
             val location = if (pageToken == null) "$lat,$lon" else null
             val response = travelApiService.getNearbyPlaces(
                 location = location,
-                radius = 50000, 
+                radius = radius ?: 50000,
                 keyword = "tourist attractions|parks|museums|landmarks|temples|monuments|gardens",
                 pageToken = pageToken,
                 apiKey = googleKey
@@ -120,11 +121,15 @@ class TravelRepositoryImpl @Inject constructor(
                     else -> "Tourist Spot"
                 }
                 
-                // ADVANCED TRUST SCORE ENGINE
                 val rating = result.rating ?: 0.0
                 val reviews = result.userRatingsTotal ?: 0
                 
-                val rawScore = ((rating / 5.0) * 70.0 + (if (reviews > 500) 30.0 else if (reviews > 50) 15.0 else 0.0)).toInt().coerceIn(0, 100)
+                // V1.1 Formula: weighted rating + volume bonus + recency (mocked for now)
+                val ratingFactor = (rating / 5.0) * 60.0
+                val volumeFactor = (if (reviews > 1000) 30.0 else if (reviews > 100) 15.0 else 5.0)
+                val recencyFactor = 10.0 // Mocked since Google Places API doesn't give review dates in nearby search
+                
+                val rawScore = (ratingFactor + volumeFactor + recencyFactor).toInt().coerceIn(0, 100)
                 
                 val tier = when {
                     reviews < 10 -> TrustTier.LIMITED_DATA
@@ -134,9 +139,9 @@ class TravelRepositoryImpl @Inject constructor(
                 }
 
                 val reason = when (tier) {
-                    TrustTier.HIGHLY_TRUSTED -> "High rating from ${reviews}+ verified visitors."
+                    TrustTier.HIGHLY_TRUSTED -> "Exceptional quality from ${reviews}+ verified visitors."
                     TrustTier.RELIABLE -> "Solid community feedback with consistent visits."
-                    TrustTier.LIMITED_DATA -> "New or emerging spot with few recent reviews."
+                    TrustTier.LIMITED_DATA -> "New or emerging spot with limited recent data."
                     TrustTier.UNVERIFIED -> "Mixed feedback or inconsistent visit data."
                 }
 
@@ -144,7 +149,9 @@ class TravelRepositoryImpl @Inject constructor(
                     score = rawScore,
                     tier = tier,
                     reason = reason,
-                    reviewDensity = reviews.toDouble() / 10.0, // Mock density
+                    ratingFactor = ratingFactor,
+                    volumeFactor = volumeFactor,
+                    recencyFactor = recencyFactor,
                     verificationLevel = if (reviews > 200) 3 else if (reviews > 50) 2 else 1
                 )
 
@@ -178,7 +185,6 @@ class TravelRepositoryImpl @Inject constructor(
             
             response.results.map { result ->
                 val rawAddress = result.address ?: "Address not available"
-                // Standardize English Capitalization for addresses
                 val formattedAddress = rawAddress.split(" ").joinToString(" ") { word ->
                     word.lowercase().replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() }
                 }
@@ -192,6 +198,41 @@ class TravelRepositoryImpl @Inject constructor(
                     rating = result.rating,
                     userRatingsTotal = result.userRatingsTotal,
                     photoReference = result.photos?.firstOrNull()?.photoReference
+                )
+            }
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    override suspend fun fetchNearbyAmenities(lat: Double, lon: Double): List<NearbyAmenity> {
+        val query = """
+            [out:json];
+            (
+              node["amenity"="toilets"](around:2000,$lat,$lon);
+              node["amenity"="police"](around:2000,$lat,$lon);
+              node["shop"="tea"](around:2000,$lat,$lon);
+            );
+            out body;
+        """.trimIndent()
+
+        return try {
+            val response = overpassApiService.getNearbyPOIs(query)
+            response.elements.map { element ->
+                val type = when {
+                    element.tags?.get("amenity") == "toilets" -> AmenityType.TOILET
+                    element.tags?.get("amenity") == "police" -> AmenityType.POLICE
+                    element.tags?.get("shop") == "tea" -> AmenityType.TEA_STALL
+                    else -> AmenityType.TOILET
+                }
+                
+                NearbyAmenity(
+                    id = element.id.toString(),
+                    type = type,
+                    name = element.tags?.get("name") ?: type.name.replace("_", " ").lowercase().replaceFirstChar { it.uppercase() },
+                    lat = element.lat,
+                    lon = element.lon,
+                    address = element.tags?.get("addr:full") ?: element.tags?.get("addr:street")
                 )
             }
         } catch (_: Exception) {

@@ -1,7 +1,8 @@
 package com.example.androidassignment4travelplannerapp.di
 
+import com.example.androidassignment4travelplannerapp.data.remote.NominatimApiService
+import com.example.androidassignment4travelplannerapp.data.remote.OpenTripMapApiService
 import com.example.androidassignment4travelplannerapp.data.remote.OverpassApiService
-import com.example.androidassignment4travelplannerapp.data.remote.TravelApiService
 import com.example.androidassignment4travelplannerapp.data.remote.WeatherApiService
 import dagger.Module
 import dagger.Provides
@@ -42,10 +43,10 @@ object NetworkModule {
 
     @Provides
     @Singleton
-    @Named("TravelRetrofit")
-    fun provideTravelRetrofit(okHttpClient: OkHttpClient): Retrofit {
+    @Named("OverpassRetrofit")
+    fun provideOverpassRetrofit(okHttpClient: OkHttpClient): Retrofit {
         return Retrofit.Builder()
-            .baseUrl("https://maps.googleapis.com/")
+            .baseUrl("https://overpass-api.de/")
             .client(okHttpClient)
             .addConverterFactory(GsonConverterFactory.create())
             .build()
@@ -53,10 +54,21 @@ object NetworkModule {
 
     @Provides
     @Singleton
-    @Named("OverpassRetrofit")
-    fun provideOverpassRetrofit(okHttpClient: OkHttpClient): Retrofit {
+    @Named("OtmRetrofit")
+    fun provideOtmRetrofit(okHttpClient: OkHttpClient): Retrofit {
         return Retrofit.Builder()
-            .baseUrl("https://overpass-api.de/")
+            .baseUrl("https://api.opentripmap.com/")
+            .client(okHttpClient)
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+    }
+
+    @Provides
+    @Singleton
+    @Named("NominatimRetrofit")
+    fun provideNominatimRetrofit(okHttpClient: OkHttpClient): Retrofit {
+        return Retrofit.Builder()
+            .baseUrl("https://nominatim.openstreetmap.org/")
             .client(okHttpClient)
             .addConverterFactory(GsonConverterFactory.create())
             .build()
@@ -70,13 +82,19 @@ object NetworkModule {
 
     @Provides
     @Singleton
-    fun provideTravelApiService(@Named("TravelRetrofit") retrofit: Retrofit): TravelApiService {
-        return retrofit.create(TravelApiService::class.java)
+    fun provideOverpassApiService(@Named("OverpassRetrofit") retrofit: Retrofit): OverpassApiService {
+        return retrofit.create(OverpassApiService::class.java)
     }
 
     @Provides
     @Singleton
-    fun provideOverpassApiService(@Named("OverpassRetrofit") retrofit: Retrofit): OverpassApiService {
-        return retrofit.create(OverpassApiService::class.java)
+    fun provideOtmApiService(@Named("OtmRetrofit") retrofit: Retrofit): OpenTripMapApiService {
+        return retrofit.create(OpenTripMapApiService::class.java)
+    }
+
+    @Provides
+    @Singleton
+    fun provideNominatimApiService(@Named("NominatimRetrofit") retrofit: Retrofit): NominatimApiService {
+        return retrofit.create(NominatimApiService::class.java)
     }
 }

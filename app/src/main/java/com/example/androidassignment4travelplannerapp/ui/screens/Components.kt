@@ -36,14 +36,46 @@ import com.example.androidassignment4travelplannerapp.data.remote.GooglePlaceDet
 import com.example.androidassignment4travelplannerapp.data.remote.WeatherResponse
 import com.example.androidassignment4travelplannerapp.domain.model.*
 import com.example.androidassignment4travelplannerapp.ui.viewmodel.TravelViewModel
-import com.google.android.gms.maps.CameraUpdateFactory
-import com.google.android.gms.maps.model.BitmapDescriptorFactory
-import com.google.android.gms.maps.model.CameraPosition
-import com.google.android.gms.maps.model.LatLng
-import com.google.maps.android.compose.*
+import androidx.compose.ui.viewinterop.AndroidView
+import org.osmdroid.tileprovider.tilesource.TileSourceFactory
+import org.osmdroid.util.GeoPoint
+import org.osmdroid.views.MapView
+import org.osmdroid.views.overlay.Marker
 import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.TimeUnit
+
+@Composable
+fun OsmMapView(
+    modifier: Modifier = Modifier,
+    center: LatLng,
+    zoom: Double = 15.0,
+    markers: List<Pair<LatLng, String>> = emptyList()
+) {
+    AndroidView(
+        factory = { context ->
+            MapView(context).apply {
+                setTileSource(TileSourceFactory.MAPNIK)
+                setMultiTouchControls(true)
+                controller.setZoom(zoom)
+                controller.setCenter(GeoPoint(center.lat, center.lng))
+                
+                markers.forEach { (pos, title) ->
+                    val marker = Marker(this)
+                    marker.position = GeoPoint(pos.lat, pos.lng)
+                    marker.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+                    marker.title = title
+                    overlays.add(marker)
+                }
+            }
+        },
+        modifier = modifier,
+        update = { view ->
+            view.controller.animateTo(GeoPoint(center.lat, center.lng))
+            view.controller.setZoom(zoom)
+        }
+    )
+}
 
 @Composable
 fun PhotoPlaceholder(modifier: Modifier = Modifier) {
@@ -78,9 +110,6 @@ fun PremiumPlaceDetailSheet(
 ) {
     val context = LocalContext.current
     val placeLatLng = LatLng(detail.geometry.location.lat, detail.geometry.location.lng)
-    val cameraPositionState = rememberCameraPositionState {
-        position = CameraPosition.fromLatLngZoom(placeLatLng, 15f)
-    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss, 
@@ -165,23 +194,11 @@ fun PremiumPlaceDetailSheet(
                     shape = RoundedCornerShape(16.dp),
                     elevation = CardDefaults.cardElevation(2.dp)
                 ) {
-                    GoogleMap(
+                    OsmMapView(
                         modifier = Modifier.fillMaxSize(),
-                        cameraPositionState = cameraPositionState,
-                        uiSettings = MapUiSettings(
-                            zoomControlsEnabled = false,
-                            scrollGesturesEnabled = false,
-                            zoomGesturesEnabled = false,
-                            tiltGesturesEnabled = false,
-                            rotationGesturesEnabled = false,
-                            myLocationButtonEnabled = false
-                        )
-                    ) {
-                        Marker(
-                            state = MarkerState(position = placeLatLng),
-                            title = detail.name
-                        )
-                    }
+                        center = placeLatLng,
+                        markers = listOf(placeLatLng to detail.name)
+                    )
                 }
                 Spacer(modifier = Modifier.height(32.dp))
             }
@@ -321,12 +338,8 @@ fun HighEndWeatherMapCard(
     onSave: () -> Unit
 ) {
     val cityLatLng = LatLng(weather.coord.lat, weather.coord.lon)
-    val cameraPositionState = rememberCameraPositionState { position = CameraPosition.fromLatLngZoom(cityLatLng, 12f) }
+    val focusLatLng = mapFocus?.let { LatLng(it.first, it.second) } ?: cityLatLng
 
-    LaunchedEffect(mapFocus) {
-        mapFocus?.let { cameraPositionState.animate(CameraUpdateFactory.newLatLngZoom(LatLng(it.first, it.second), 14f)) }
-    }
-    
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
@@ -358,33 +371,11 @@ fun HighEndWeatherMapCard(
             
             Spacer(modifier = Modifier.height(20.dp))
 
-            GoogleMap(
+            OsmMapView(
                 modifier = Modifier.fillMaxWidth().height(220.dp).clip(RoundedCornerShape(16.dp)),
-                cameraPositionState = cameraPositionState,
-                uiSettings = MapUiSettings(zoomControlsEnabled = false)
-            ) {
-                Marker(state = MarkerState(position = cityLatLng), title = weather.name)
-                searchResults.forEach { place ->
-                    val hue = when(place.category) {
-                        "Landmark" -> BitmapDescriptorFactory.HUE_AZURE
-                        "Religious Site" -> BitmapDescriptorFactory.HUE_VIOLET
-                        "Nature" -> BitmapDescriptorFactory.HUE_GREEN
-                        "Museum" -> BitmapDescriptorFactory.HUE_ORANGE
-                        "Entertainment" -> BitmapDescriptorFactory.HUE_ROSE
-                        else -> BitmapDescriptorFactory.HUE_RED
-                    }
-                    Marker(
-                        state = MarkerState(position = LatLng(place.latitude, place.longitude)),
-                        title = place.name,
-                        icon = BitmapDescriptorFactory.defaultMarker(hue),
-                        onClick = {
-                            viewModel.setMapFocus(place.latitude, place.longitude)
-                            viewModel.fetchPlaceDetail(place.id)
-                            true
-                        }
-                    )
-                }
-            }
+                center = focusLatLng,
+                markers = searchResults.map { LatLng(it.latitude, it.longitude) to it.name } + (cityLatLng to weather.name)
+            )
         }
     }
 }

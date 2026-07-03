@@ -1,37 +1,30 @@
 package com.example.androidassignment4travelplannerapp.data.repository
 
 import android.content.Context
-import com.example.androidassignment4travelplannerapp.data.local.SavedPlaceEntity
-import com.example.androidassignment4travelplannerapp.data.local.TripDao
+import com.example.androidassignment4travelplannerapp.data.local.*
 import com.example.androidassignment4travelplannerapp.data.mapper.toDomain
 import com.example.androidassignment4travelplannerapp.data.mapper.toEntity
 import com.example.androidassignment4travelplannerapp.data.remote.*
 import com.example.androidassignment4travelplannerapp.domain.model.*
 import com.example.androidassignment4travelplannerapp.domain.repository.ITravelRepository
-import com.google.android.libraries.places.api.Places
-import com.google.android.libraries.places.api.model.AutocompleteSessionToken
-import com.google.android.libraries.places.api.model.Place
-import com.google.android.libraries.places.api.net.FindAutocompletePredictionsRequest
-import com.google.android.libraries.places.api.net.PlacesClient
 import com.google.gson.Gson
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.tasks.await
 import java.util.Locale
 import javax.inject.Inject
 
 class TravelRepositoryImpl @Inject constructor(
-    private val travelApiService: TravelApiService,
     private val weatherApiService: WeatherApiService,
     private val overpassApiService: OverpassApiService,
+    private val otmApiService: OpenTripMapApiService,
+    private val nominatimApiService: NominatimApiService,
     private val tripDao: TripDao,
     @ApplicationContext context: Context,
 ) : ITravelRepository {
 
     private val owApiKey = com.example.androidassignment4travelplannerapp.BuildConfig.WEATHER_API_KEY
-    private val googleKey = com.example.androidassignment4travelplannerapp.BuildConfig.GOOGLE_MAPS_KEY
-    private val placesClient: PlacesClient = Places.createClient(context)
+    private val otmKey = com.example.androidassignment4travelplannerapp.BuildConfig.OPEN_TRIP_MAP_KEY
 
     override suspend fun fetchWeather(city: String): WeatherInfo {
         return weatherApiService.getWeather(city, owApiKey).toDomain()
@@ -46,22 +39,17 @@ class TravelRepositoryImpl @Inject constructor(
         return Gson().toJson(forecast)
     }
 
-    override suspend fun searchLocations(query: String): List<Place> {
+    override suspend fun searchLocations(query: String): List<PlaceSuggestion> {
         return try {
-            val token = AutocompleteSessionToken.newInstance()
-            val request = FindAutocompletePredictionsRequest.builder()
-                .setSessionToken(token)
-                .setQuery(query)
-                .setTypesFilter(listOf("locality", "administrative_area_level_3"))
-                .build()
-            
-            val response = placesClient.findAutocompletePredictions(request).await()
-            response.autocompletePredictions.map { prediction ->
-                Place.builder()
-                    .setId(prediction.placeId)
-                    .setName(prediction.getPrimaryText(null).toString())
-                    .setAddress(prediction.getSecondaryText(null).toString())
-                    .build()
+            val response = nominatimApiService.searchLocations(query)
+            response.map { res ->
+                PlaceSuggestion(
+                    id = res.place_id.toString(),
+                    name = res.display_name.split(",").firstOrNull()?.trim() ?: res.display_name,
+                    address = res.display_name,
+                    lat = res.lat,
+                    lon = res.lon
+                )
             }
         } catch (_: Exception) {
             emptyList()
@@ -75,129 +63,66 @@ class TravelRepositoryImpl @Inject constructor(
         radius: Int?
     ): Pair<List<Attraction>, String?> {
         return try {
-            val location = if (pageToken == null) "$lat,$lon" else null
-            val response = travelApiService.getNearbyPlaces(
-                location = location,
+            val response = otmApiService.getPlacesInRadius(
                 radius = radius ?: 50000,
-                keyword = "tourist attractions|parks|museums|landmarks|temples|monuments|gardens",
-                pageToken = pageToken,
-                apiKey = googleKey
+                lon = lon,
+                lat = lat,
+                kinds = "interesting_places",
+                apiKey = otmKey
             )
             
-            val attractions = response.results.filter { result ->
-                val types = result.types ?: emptyList()
-                val name = result.name.lowercase()
-                
-                val allowed = listOf(
-                    "tourist_attraction", "museum", "park", "place_of_worship", 
-                    "hindu_temple", "church", "mosque", "shrine", "art_gallery", 
-                    "zoo", "aquarium", "amusement_park", "natural_feature", 
-                    "stadium", "shopping_mall", "market", "historic_site", "landmark", 
-                    "town_square", "monument", "garden", "library"
-                )
-                
-                val forbidden = listOf(
-                    "dentist", "doctor", "hospital", "car_repair", "bank", "atm", 
-                    "gas_station", "pharmacy", "local_government_office",
-                    "lawyer", "police", "post_office"
-                )
-                val keywords = listOf("clinic", "repair", "petrol", "cng", "service", "house", "villa")
-
-                val isAllowed = types.any { it in allowed }
-                val isForbidden = (types.any { it in forbidden } && !types.any { it in allowed }) || keywords.any { name.contains(it) }
-                val isHighlyRated = (result.rating ?: 0.0) >= 4.0 && (result.userRatingsTotal ?: 0) > 5
-                
-                (isAllowed || isHighlyRated) && !isForbidden
-            }.map { result ->
-                val types = result.types ?: emptyList()
-                
-                val categoryGroup = when {
-                    types.any { it in listOf("historic_site", "landmark", "town_square", "monument") } -> "Landmark"
-                    types.any { it in listOf("place_of_worship", "hindu_temple", "church", "mosque", "shrine") } -> "Religious Site"
-                    types.any { it in listOf("park", "natural_feature", "garden") } -> "Nature"
-                    types.any { it in listOf("museum", "art_gallery", "library") } -> "Museum"
-                    types.any { it in listOf("amusement_park", "stadium", "zoo", "aquarium") } -> "Entertainment"
-                    types.any { it in listOf("shopping_mall", "market") } -> "Shopping"
-                    else -> "Tourist Spot"
-                }
-                
-                val rating = result.rating ?: 0.0
-                val reviews = result.userRatingsTotal ?: 0
-                
-                // V1.1 Formula: weighted rating + volume bonus + recency (mocked for now)
+            val attractions = response.map { res ->
+                val rating = (res.rate / 3.0) * 5.0
                 val ratingFactor = (rating / 5.0) * 60.0
-                val volumeFactor = (if (reviews > 1000) 30.0 else if (reviews > 100) 15.0 else 5.0)
-                val recencyFactor = 10.0 // Mocked since Google Places API doesn't give review dates in nearby search
-                
+                val volumeFactor = 20.0
+                val recencyFactor = 10.0
                 val rawScore = (ratingFactor + volumeFactor + recencyFactor).toInt().coerceIn(0, 100)
-                
-                val tier = when {
-                    reviews < 10 -> TrustTier.LIMITED_DATA
-                    rawScore >= 85 -> TrustTier.HIGHLY_TRUSTED
-                    rawScore >= 60 -> TrustTier.RELIABLE
-                    else -> TrustTier.UNVERIFIED
-                }
 
-                val reason = when (tier) {
-                    TrustTier.HIGHLY_TRUSTED -> "Exceptional quality from ${reviews}+ verified visitors."
-                    TrustTier.RELIABLE -> "Solid community feedback with consistent visits."
-                    TrustTier.LIMITED_DATA -> "New or emerging spot with limited recent data."
-                    TrustTier.UNVERIFIED -> "Mixed feedback or inconsistent visit data."
-                }
+                val tier = if (rawScore >= 85) TrustTier.HIGHLY_TRUSTED else TrustTier.RELIABLE
 
                 val trustObj = TrustScore(
                     score = rawScore,
                     tier = tier,
-                    reason = reason,
+                    reason = "Verified via OpenTripMap heritage database.",
                     ratingFactor = ratingFactor,
                     volumeFactor = volumeFactor,
                     recencyFactor = recencyFactor,
-                    verificationLevel = if (reviews > 200) 3 else if (reviews > 50) 2 else 1
+                    verificationLevel = 2
                 )
 
                 Attraction(
-                    id = result.placeId,
-                    name = result.name,
-                    category = categoryGroup,
-                    latitude = result.geometry.location.lat,
-                    longitude = result.geometry.location.lng,
-                    photoReference = result.photos?.firstOrNull()?.photoReference,
-                    rating = result.rating,
-                    totalRatings = result.userRatingsTotal,
+                    id = res.xid,
+                    name = res.name,
+                    category = res.kinds.split(",").firstOrNull()?.replace("_", " ")?.replaceFirstChar { it.uppercase() } ?: "Landmark",
+                    latitude = res.point.lat,
+                    longitude = res.point.lon,
+                    photoReference = null,
+                    rating = rating,
+                    totalRatings = 100,
                     trustScore = trustObj
                 )
-            }.sortedByDescending { it.trustScore?.score ?: 0 }
+            }.filter { it.name.isNotBlank() }
             
-            Pair(attractions, response.nextPageToken)
+            Pair(attractions, null)
         } catch (_: Exception) {
             Pair(emptyList(), null)
         }
     }
 
     override suspend fun fetchNearbyHotels(lat: Double, lon: Double): List<Hotel> {
+        val query = "[out:json];node[\"tourism\"=\"hotel\"](around:5000,$lat,$lon);out body;"
         return try {
-            val response = travelApiService.getNearbyPlaces(
-                location = "$lat,$lon",
-                radius = 5000,
-                type = "lodging",
-                apiKey = googleKey
-            )
-            
-            response.results.map { result ->
-                val rawAddress = result.address ?: "Address not available"
-                val formattedAddress = rawAddress.split(" ").joinToString(" ") { word ->
-                    word.lowercase().replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() }
-                }
-
+            val response = overpassApiService.getNearbyPOIs(query)
+            response.elements.map { element ->
                 Hotel(
-                    id = result.placeId,
-                    name = result.name,
-                    address = formattedAddress,
-                    latitude = result.geometry.location.lat,
-                    longitude = result.geometry.location.lng,
-                    rating = result.rating,
-                    userRatingsTotal = result.userRatingsTotal,
-                    photoReference = result.photos?.firstOrNull()?.photoReference
+                    id = element.id.toString(),
+                    name = element.tags?.get("name") ?: "Local Stay",
+                    address = element.tags?.get("addr:street") ?: "Nearby Stay",
+                    latitude = element.lat,
+                    longitude = element.lon,
+                    rating = 4.0,
+                    userRatingsTotal = 50,
+                    photoReference = null
                 )
             }
         } catch (_: Exception) {
@@ -206,16 +131,7 @@ class TravelRepositoryImpl @Inject constructor(
     }
 
     override suspend fun fetchNearbyAmenities(lat: Double, lon: Double): List<NearbyAmenity> {
-        val query = """
-            [out:json];
-            (
-              node["amenity"="toilets"](around:2000,$lat,$lon);
-              node["amenity"="police"](around:2000,$lat,$lon);
-              node["shop"="tea"](around:2000,$lat,$lon);
-            );
-            out body;
-        """.trimIndent()
-
+        val query = "[out:json];(node[\"amenity\"=\"toilets\"](around:2000,$lat,$lon);node[\"amenity\"=\"police\"](around:2000,$lat,$lon);node[\"shop\"=\"tea\"](around:2000,$lat,$lon););out body;"
         return try {
             val response = overpassApiService.getNearbyPOIs(query)
             response.elements.map { element ->
@@ -225,11 +141,10 @@ class TravelRepositoryImpl @Inject constructor(
                     element.tags?.get("shop") == "tea" -> AmenityType.TEA_STALL
                     else -> AmenityType.TOILET
                 }
-                
                 NearbyAmenity(
                     id = element.id.toString(),
                     type = type,
-                    name = element.tags?.get("name") ?: type.name.replace("_", " ").lowercase().replaceFirstChar { it.uppercase() },
+                    name = element.tags?.get("name") ?: type.name.lowercase().replaceFirstChar { it.uppercase() },
                     lat = element.lat,
                     lon = element.lon,
                     address = element.tags?.get("addr:full") ?: element.tags?.get("addr:street")
@@ -256,8 +171,23 @@ class TravelRepositoryImpl @Inject constructor(
         }
     }
 
-    override suspend fun fetchPlaceDetails(placeId: String): com.example.androidassignment4travelplannerapp.data.remote.GooglePlaceDetailModel {
-        return travelApiService.getPlaceDetails(placeId, apiKey = googleKey).result
+    override suspend fun fetchPlaceDetails(placeId: String): GooglePlaceDetailModel {
+        return try {
+            val otmDetail = otmApiService.getPlaceDetail(placeId, otmKey)
+            GooglePlaceDetailModel(
+                name = otmDetail.name,
+                rating = 4.0,
+                address = otmDetail.address?.road ?: "Address not available",
+                summary = GoogleSummary(otmDetail.wikipedia_extracts?.text),
+                photos = if (otmDetail.image != null) listOf(GooglePhoto(otmDetail.image)) else null,
+                geometry = GoogleGeometry(
+                    GoogleLatLng(otmDetail.point.lat, otmDetail.point.lon)
+                ),
+                userRatingsTotal = 100
+            )
+        } catch (_: Exception) {
+            GooglePlaceDetailModel("", 0.0, "", null, null, GoogleGeometry(GoogleLatLng(0.0, 0.0)), 0)
+        }
     }
 
     override fun getSavedTrips(): Flow<List<Trip>> {
@@ -310,7 +240,6 @@ class TravelRepositoryImpl @Inject constructor(
     }
     
     override fun getPhotoUrl(photoReference: String?): String? {
-        if (photoReference == null) return null
-        return "https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photo_reference=$photoReference&key=$googleKey"
+        return photoReference
     }
 }

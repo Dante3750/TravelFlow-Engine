@@ -17,11 +17,15 @@ import com.example.androidassignment4travelplannerapp.ui.screens.TripDetailScree
 import com.example.androidassignment4travelplannerapp.ui.theme.AndroidAssignment4TravelPlannerAppTheme
 import com.example.androidassignment4travelplannerapp.ui.viewmodel.TravelViewModel
 import dagger.hilt.android.AndroidEntryPoint
+import org.osmdroid.config.Configuration
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        
+        // OSMdroid Configuration
+        Configuration.getInstance().userAgentValue = packageName
         
         enableEdgeToEdge()
         setContent {

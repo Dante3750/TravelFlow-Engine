@@ -7,7 +7,6 @@ import com.example.androidassignment4travelplannerapp.data.remote.WeatherRespons
 import com.example.androidassignment4travelplannerapp.data.remote.GooglePlaceDetailModel
 import com.example.androidassignment4travelplannerapp.domain.model.*
 import com.example.androidassignment4travelplannerapp.domain.usecase.*
-import com.google.android.libraries.places.api.model.Place
 import com.google.gson.Gson
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -65,8 +64,8 @@ class TravelViewModel @Inject constructor(
     private val _forecast = MutableStateFlow<ForecastResponse?>(null)
     val forecast: StateFlow<ForecastResponse?> = _forecast
 
-    private val _suggestions = MutableStateFlow<List<Place>>(emptyList())
-    val suggestions: StateFlow<List<Place>> = _suggestions
+    private val _suggestions = MutableStateFlow<List<PlaceSuggestion>>(emptyList())
+    val suggestions: StateFlow<List<PlaceSuggestion>> = _suggestions
 
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery
@@ -228,16 +227,15 @@ class TravelViewModel @Inject constructor(
         }
     }
 
-    fun selectSuggestion(place: Place) {
-        _searchQuery.value = place.name ?: ""
+    fun selectSuggestion(place: PlaceSuggestion) {
+        _searchQuery.value = place.name
         _suggestions.value = emptyList() // Clear suggestions after selection
         viewModelScope.launch {
             try {
-                val detail = getPlaceDetailsUseCase(place.id!!)
                 startDiscoveryForCity(
-                    name = place.name ?: "", 
-                    lat = detail.geometry.location.lat, 
-                    lon = detail.geometry.location.lng
+                    name = place.name, 
+                    lat = place.lat, 
+                    lon = place.lon
                 )
             } catch (e: Exception) {
                 _errorMessage.value = "Unable to load location details."

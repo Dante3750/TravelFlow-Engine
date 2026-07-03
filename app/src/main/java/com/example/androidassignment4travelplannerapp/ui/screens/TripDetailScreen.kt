@@ -24,11 +24,6 @@ import coil.compose.AsyncImage
 import com.example.androidassignment4travelplannerapp.data.remote.ForecastResponse
 import com.example.androidassignment4travelplannerapp.domain.model.*
 import com.example.androidassignment4travelplannerapp.ui.viewmodel.TravelViewModel
-import com.google.android.gms.maps.CameraUpdateFactory
-import com.google.android.gms.maps.model.BitmapDescriptorFactory
-import com.google.android.gms.maps.model.CameraPosition
-import com.google.android.gms.maps.model.LatLng
-import com.google.maps.android.compose.*
 import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.TimeUnit
@@ -58,19 +53,8 @@ fun TripDetailScreen(
     val selectedDetail by viewModel.selectedPlaceDetail.collectAsState()
 
     val cityLatLng = LatLng(trip.latitude, trip.longitude)
-    val cameraPositionState = rememberCameraPositionState { position = CameraPosition.fromLatLngZoom(cityLatLng, 12f) }
 
     LaunchedEffect(trip) { viewModel.loadTripDetails(trip) }
-    
-    LaunchedEffect(mapFocus) { 
-        mapFocus?.let {
-            val target = LatLng(it.first, it.second)
-            if ((cameraPositionState.position.target.latitude != target.latitude) || 
-                (cameraPositionState.position.target.longitude != target.longitude)) {
-                cameraPositionState.animate(CameraUpdateFactory.newLatLngZoom(target, 15f))
-            }
-        }
-    }
 
     var showEditDates by remember { mutableStateOf(false) }
 
@@ -171,46 +155,11 @@ fun TripDetailScreen(
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    GoogleMap(
-                        modifier = Modifier.fillMaxWidth().height(240.dp).clip(RoundedCornerShape(20.dp)), 
-                        cameraPositionState = cameraPositionState,
-                        uiSettings = MapUiSettings(
-                            zoomControlsEnabled = false,
-                            scrollGesturesEnabled = false,
-                            zoomGesturesEnabled = false,
-                            tiltGesturesEnabled = false,
-                            rotationGesturesEnabled = false,
-                            myLocationButtonEnabled = false
-                        )
-                    ) {
-                        val mainMarkerPos = trip.pinnedHotel?.let { LatLng(it.latitude, it.longitude) } ?: cityLatLng
-                        Marker(
-                            state = MarkerState(position = mainMarkerPos), 
-                            title = trip.pinnedHotel?.name ?: trip.destination,
-                            icon = if (trip.pinnedHotel != null) BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_AZURE) else null
-                        )
-                        
-                        savedPlaces.forEach { place ->
-                            val hue = when(place.category) {
-                                "Landmark" -> BitmapDescriptorFactory.HUE_AZURE
-                                "Religious Site" -> BitmapDescriptorFactory.HUE_VIOLET
-                                "Nature" -> BitmapDescriptorFactory.HUE_GREEN
-                                "Museum" -> BitmapDescriptorFactory.HUE_ORANGE
-                                "Entertainment" -> BitmapDescriptorFactory.HUE_ROSE
-                                else -> BitmapDescriptorFactory.HUE_RED
-                            }
-                            Marker(
-                                state = MarkerState(position = LatLng(place.latitude, place.longitude)), 
-                                title = place.name, 
-                                icon = BitmapDescriptorFactory.defaultMarker(hue),
-                                onClick = { 
-                                    viewModel.setMapFocus(place.latitude, place.longitude)
-                                    viewModel.fetchPlaceDetail(place.id)
-                                    true 
-                                }
-                            )
-                        }
-                    }
+                    OsmMapView(
+                        modifier = Modifier.fillMaxWidth().height(240.dp).clip(RoundedCornerShape(20.dp)),
+                        center = mapFocus?.let { LatLng(it.first, it.second) } ?: cityLatLng,
+                        markers = savedPlaces.map { LatLng(it.latitude, it.longitude) to it.name } + (cityLatLng to trip.destination)
+                    )
 
                     Spacer(modifier = Modifier.height(24.dp))
                     Text("Itinerary Plan", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)

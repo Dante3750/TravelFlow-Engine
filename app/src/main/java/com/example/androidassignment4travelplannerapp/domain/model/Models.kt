@@ -1,5 +1,15 @@
 package com.example.androidassignment4travelplannerapp.domain.model
 
+data class LatLng(val lat: Double, val lng: Double)
+
+data class PlaceSuggestion(
+    val id: String,
+    val name: String,
+    val address: String,
+    val lat: Double,
+    val lon: Double
+)
+
 data class Trip(
     val id: Int,
     val title: String,

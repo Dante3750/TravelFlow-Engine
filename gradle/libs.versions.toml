@@ -14,8 +14,7 @@ room = "2.6.1"
 ksp = "2.1.0-1.0.29"
 maps-compose = "4.3.3"
 play-services-maps = "19.0.0"
-google-places = "3.5.0"
-coil = "2.5.0"
+osmdroid = "6.1.18"
 hilt = "2.51.1"
 mockk = "1.13.12"
 kotlinx-coroutines-test = "1.7.3"
@@ -48,10 +47,11 @@ room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "
 room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = "room" }
 room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
 
-# Google Services
-maps-compose = { group = "com.google.maps.android", name = "maps-compose", version.ref = "maps-compose" }
-play-services-maps = { group = "com.google.android.gms", name = "play-services-maps", version.ref = "play-services-maps" }
-google-places = { group = "com.google.android.libraries.places", name = "places", version.ref = "google-places" }
+# Google Services (Removed)
+# maps-compose = { group = "com.google.maps.android", name = "maps-compose", version.ref = "maps-compose" }
+# play-services-maps = { group = "com.google.android.gms", name = "play-services-maps", version.ref = "play-services-maps" }
+# google-places = { group = "com.google.android.libraries.places", name = "places", version.ref = "google-places" }
+osmdroid = { group = "org.osmdroid", name = "osmdroid-android", version.ref = "osmdroid" }
 
 # Hilt
 hilt-android = { group = "com.google.dagger", name = "hilt-android", version.ref = "hilt" }

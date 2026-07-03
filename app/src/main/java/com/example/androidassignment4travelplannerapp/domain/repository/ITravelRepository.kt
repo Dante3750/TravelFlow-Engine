@@ -1,7 +1,6 @@
 package com.example.androidassignment4travelplannerapp.domain.repository
 
 import com.example.androidassignment4travelplannerapp.domain.model.*
-import com.google.android.libraries.places.api.model.Place
 import kotlinx.coroutines.flow.Flow
 
 interface ITravelRepository {
@@ -10,8 +9,8 @@ interface ITravelRepository {
     suspend fun fetchForecast(city: String): ForecastInfo
     suspend fun fetchForecastJson(city: String): String
 
-    // Search & Places
-    suspend fun searchLocations(query: String): List<Place>
+    // Search & Places (Free)
+    suspend fun searchLocations(query: String): List<PlaceSuggestion>
     
     // Updated: Supports pagination viapageToken and location bias
     suspend fun fetchNearbyAttractions(

@@ -1,59 +1,60 @@
-# FreePlan Travel Itinerary Planner
+# WePlan: Travel Itinerary & Weather Analytics
 
-A travel planning app for Android. Users can search destinations, browse nearby places, check weather, and build day-wise itineraries that work offline.
+[![Platform](https://img.shields.io/badge/Platform-Android-brightgreen.svg)](https://developer.android.com/android)
+[![Architecture](https://img.shields.io/badge/Architecture-Clean--Arch-blue.svg)](https://blog.cleancoder.com/uncle-bob/2012/08/13/the-clean-architecture.html)
+[![Tech](https://img.shields.io/badge/UI-Jetpack--Compose-orange.svg)](https://developer.android.com/jetpack/compose)
 
-## Architecture
+A high-performance Travel Planning application built to demonstrate **Clean Architecture**, **Dependency Injection**, and **Offline-First** synchronization. WePlan allows users to build complex, multi-day itineraries with real-time weather integration and intelligent destination search.
 
-The project uses Clean Architecture with three layers.
+---
 
-### Domain Layer
-Business logic and data models in plain Kotlin. Contains use cases for trip management and discovery.
+## 🏗 Modular Architecture
 
-### Data Layer
-Handles Room for local storage and Retrofit for network calls. Fetches data from OpenTripMap, OpenStreetMap (Nominatim/Overpass), and OpenWeatherMap.
+The application is structured following **Uncle Bob's Clean Architecture** principles, ensuring that business logic is completely decoupled from the Android framework and UI.
 
-### Presentation Layer (MVVM)
-Built with Jetpack Compose. ViewModels hold UI state and call Use Cases to run business logic.
+- **Domain Layer**: 100% Pure Kotlin. Contains Entities, Use Cases, and Repository Interfaces. No dependencies on Android libraries.
+- **Data Layer**: Handles data persistence (Room) and network communication (Retrofit). Implements repository interfaces defined in the Domain layer.
+- **Presentation Layer**: Built with **Jetpack Compose** following the MVVM pattern. Uses `StateFlow` for reactive UI updates.
 
-## Tech Stack
+---
 
-* Kotlin, Jetpack Compose, Material 3
-* Hilt for dependency injection
-* Retrofit and OkHttp for networking
-* Room for local database and offline cache
-* Coroutines and Flow for async work
-* OSMDroid (OpenStreetMap) for maps
-* OpenTripMap API for discovery
-* OpenWeatherMap API
+## 🚀 Technical Features
 
-## Key Features
+### 📡 Offline-First Synchronization
+Utilizes a **Single Source of Truth (SSOT)** strategy. All data fetched from the Google Places and OpenWeather APIs is cached in a local **Room** database, ensuring a seamless user experience even in zero-connectivity environments.
 
-* Destination search using OSM Nominatim
-* Itinerary builder that organizes places by day
-* Weather info per destination
-* Offline access for saved trips
-* Nearby attractions discovery via OpenTripMap
-* Essential services (Police, Toilets) via OSM Overpass
+### ⚡ Background Processing (WorkManager)
+Implemented periodic background sync using **WorkManager** to update weather forecasts for upcoming trips, ensuring users always have the latest data without manually refreshing the app.
 
-## Setup
+### 💰 API Cost Optimization
+Leveraged **Google Autocomplete Session Tokens**. This ensures that multiple keystrokes in a single search session are billed as a single request, significantly reducing API overhead and operational costs.
 
-1. Clone the repository
-2. Open or create local.properties in the project root
-3. Add your API keys
+### 💉 Dependency Injection
+Uses **Hilt** for scoped dependency management, facilitating easier testing and better resource lifecycle handling.
 
-WEATHER_API_KEY=your_key
-OPEN_TRIP_MAP_KEY=your_key
+---
 
-local.properties is excluded from git.
+## 🛠 Tech Stack
+- **Language**: Kotlin
+- **UI**: Jetpack Compose (Material 3)
+- **Database**: Room
+- **Networking**: Retrofit & OkHttp
+- **DI**: Hilt
+- **Async**: Coroutines & Flow
+- **Background**: WorkManager
 
-4. Sync Gradle and run the app
+---
 
-## Implementation Notes
+## 🏃 Getting Started
+1. Clone the repository.
+2. Add your API keys to `local.properties`:
+   ```properties
+   GOOGLE_MAPS_KEY=your_key_here
+   WEATHER_API_KEY=your_key_here
+   ```
+3. Sync Gradle and run the `:app` module.
 
-* Trip context filtering: the Add to Trip dialog only shows trips that match the city currently being explored.
-* Discovery is anchored to the city center or pinned hotel for maximum relevance.
-* Room is the single source of truth for the UI.
+---
 
-## Assumptions
-* Free tier API keys and rate limits are sufficient for evaluation use.
-* Device has internet access at least once, at trip creation time, to fetch initial data.
+## 📝 License
+MIT License
